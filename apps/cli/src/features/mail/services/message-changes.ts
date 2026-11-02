@@ -88,8 +88,14 @@ const destinationFolder = (
   destination: MoveDestination,
 ): Effect.Effect<string, FolderNotFoundError | MessageChangeError> => {
   if (destination.kind === 'trash') {
+    // imapflow also guesses \Trash from folder names, and such a guess may be
+    // a regular folder of the user's.
     const trash = folders.find(
-      (folder) => folder.specialUse === '\\Trash' && isSelectable(folder),
+      (folder) =>
+        folder.specialUse === '\\Trash' &&
+        (folder.specialUseSource === 'extension' ||
+          folder.specialUseSource === 'user') &&
+        isSelectable(folder),
     );
     return trash === undefined
       ? Effect.fail(

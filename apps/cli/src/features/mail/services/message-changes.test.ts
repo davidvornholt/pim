@@ -9,6 +9,7 @@ const uidValidity = '111';
 type Folder = {
   readonly path: string;
   readonly specialUse?: string;
+  readonly specialUseSource?: 'user' | 'extension' | 'name';
   readonly noselect?: boolean;
 };
 
@@ -16,7 +17,7 @@ const defaultFolders: ReadonlyArray<Folder> = [
   { path: 'INBOX', specialUse: '\\Inbox' },
   { path: 'INBOX.GitHub' },
   { path: 'Archive', noselect: true },
-  { path: 'Trash', specialUse: '\\Trash' },
+  { path: 'Trash', specialUse: '\\Trash', specialUseSource: 'extension' },
 ];
 
 type ClientOptions = {
@@ -39,6 +40,7 @@ const fakeClient = (
           path: folder.path,
           name: folder.path.split('.').at(-1),
           specialUse: folder.specialUse,
+          specialUseSource: folder.specialUseSource,
           listed: true,
           flags: new Set(folder.noselect === true ? ['\\Noselect'] : []),
         })),
@@ -139,6 +141,29 @@ describe('moveMessages destination', () => {
     );
 
     expect(error._tag).toBe('MessageChangeError');
+  });
+
+  it('refuses a trash folder guessed from its name', async () => {
+    const events: Array<string> = [];
+    const folders: ReadonlyArray<Folder> = [
+      { path: 'INBOX' },
+      {
+        path: 'Projects.Trash',
+        specialUse: '\\Trash',
+        specialUseSource: 'name',
+      },
+    ];
+    const error = await Effect.runPromise(
+      Effect.flip(
+        moveMessages(fakeClient(events, { folders }), batch([7]), {
+          kind: 'trash',
+        }),
+      ),
+    );
+
+    expect(error._tag).toBe('MessageChangeError');
+    expect(error.message).toContain('no trash folder');
+    expect(events).toEqual([]);
   });
 
   it.each(['Elsewhere', 'Archive'])(
