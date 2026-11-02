@@ -73,6 +73,16 @@ const lockBatch = (
     }
   });
 
+// Without MOVE, imapflow copies and then expunges the source messages, and
+// without UIDPLUS that is a plain EXPUNGE, which also removes every other
+// message marked \Deleted in the folder. IMAP4rev2 includes both extensions.
+const canMoveWithoutExpungingOthers = (client: ImapFlow): boolean =>
+  client.capabilities.has('MOVE') ||
+  client.capabilities.has('UIDPLUS') ||
+  client.enabled.has('IMAP4REV2') ||
+  (client.capabilities.has('IMAP4rev2') &&
+    !client.capabilities.has('IMAP4rev1'));
+
 const destinationFolder = (
   folders: ReadonlyArray<ListResponse>,
   destination: MoveDestination,
@@ -111,6 +121,11 @@ export const moveMessages = (
 ): Effect.Effect<MoveMessagesResult, ChangeError> =>
   Effect.gen(function* () {
     const uids = yield* batchUids(batch);
+    if (!canMoveWithoutExpungingOthers(client)) {
+      return yield* new MessageChangeError({
+        message: `refusing to move messages: the mail server supports neither MOVE nor UIDPLUS, so moving would expunge every deleted message in "${batch.folder}"; pim will not move messages on this server`,
+      });
+    }
     const folders = yield* listMailboxes(client);
     const to = yield* destinationFolder(folders, destination);
     if (samePath(to, batch.folder)) {

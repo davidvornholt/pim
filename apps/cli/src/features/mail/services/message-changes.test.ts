@@ -24,6 +24,7 @@ type ClientOptions = {
   readonly found?: ReadonlyArray<number>;
   readonly uidValidity?: bigint;
   readonly result?: false;
+  readonly capabilities?: ReadonlyArray<string>;
 };
 
 // Records each mailbox lock and change as an event.
@@ -42,6 +43,13 @@ const fakeClient = (
           flags: new Set(folder.noselect === true ? ['\\Noselect'] : []),
         })),
       ),
+    capabilities: new Map(
+      (options.capabilities ?? ['IMAP4rev1', 'MOVE', 'UIDPLUS']).map((name) => [
+        name,
+        true,
+      ]),
+    ),
+    enabled: new Set(),
     getMailboxLock: (folder: string) => {
       events.push(`lock:${folder}`);
       return Promise.resolve({ release: () => undefined });
@@ -165,6 +173,23 @@ describe('moveMessages destination', () => {
 
     expect(error._tag).toBe('MessageChangeError');
     expect(error.message).toContain('already in "INBOX"');
+  });
+
+  it('refuses when the server would expunge every deleted message', async () => {
+    const events: Array<string> = [];
+    const error = await Effect.runPromise(
+      Effect.flip(
+        moveMessages(
+          fakeClient(events, { capabilities: ['IMAP4rev1'] }),
+          batch([7]),
+          folderDestination('INBOX.GitHub'),
+        ),
+      ),
+    );
+
+    expect(error._tag).toBe('MessageChangeError');
+    expect(error.message).toContain('neither MOVE nor UIDPLUS');
+    expect(events).toEqual([]);
   });
 });
 
