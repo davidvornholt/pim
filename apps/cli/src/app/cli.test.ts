@@ -301,3 +301,20 @@ describe('pim contacts', () => {
     subprocessTimeoutMs,
   );
 });
+
+describe('pim mail sieve', () => {
+  it(
+    'rejects an empty script before connecting',
+    () => {
+      const result = runCli(
+        ['mail', 'sieve', 'put', '--account=test@example.com', '--name=a'],
+        { stdin: ' \n' },
+      );
+      expect(result.exitCode).toBe(2);
+      expect(errorOf(result).message).toBe(
+        'the Sieve script on stdin is empty',
+      );
+    },
+    subprocessTimeoutMs,
+  );
+});

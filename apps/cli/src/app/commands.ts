@@ -24,6 +24,7 @@ import { contactCommands } from './contact-commands';
 import { contactWriteCommands } from './contact-write-commands';
 import { draftCommands } from './draft-commands';
 import { invitationCommands } from './invitation-commands';
+import { sieveCommands } from './sieve-commands';
 
 const account = flag.text('email', 'Account email from "pim accounts"');
 const optionalAccount = (description: string) =>
@@ -257,7 +258,7 @@ const attachment = defineCommand(
 export const program: Program<CommandEffect> = {
   name: 'pim',
   summary:
-    'pim: search, read, and draft email, read and change calendar events and contacts, invite people to meetings, and answer invitations. It sends no mail itself; with --notify-attendees or --notify-organizer, the calendar server emails the attendees or the organizer.',
+    'pim: search, read, and draft email, manage server-side mail filters (Sieve), read and change calendar events and contacts, invite people to meetings, and answer invitations. It sends no mail itself; with --notify-attendees or --notify-organizer, the calendar server emails the attendees or the organizer.',
   footer: [
     'Run "pim <command> --help" for its options. Write --option=value when a value starts with "--".',
     'Commands print JSON on stdout. Errors print {"error": {"tag", "message"}} on stderr and exit 1, or 2 for invalid arguments.',
@@ -272,6 +273,7 @@ export const program: Program<CommandEffect> = {
     read,
     attachment,
     ...draftCommands,
+    ...sieveCommands,
     ...calendarCommands,
     ...calendarWriteCommands,
     ...invitationCommands,

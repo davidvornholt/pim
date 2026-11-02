@@ -17,6 +17,7 @@ import type {
 } from '../features/contacts/errors/errors';
 import type { MailError } from '../features/mail/errors/errors';
 import type { Imap } from '../features/mail/services/imap';
+import type { Sieve } from '../features/mail/services/sieve';
 import { AccountConfig } from '../shared/accounts/config';
 import type { Secrets } from '../shared/accounts/secrets';
 import type { UsageError } from '../shared/command-line';
@@ -77,7 +78,7 @@ export type CommandError =
 export type CommandEffect = Effect.Effect<
   Outcome,
   CommandError,
-  AccountConfig | Secrets | MicrosoftAuth | Imap | Dav | Graph
+  AccountConfig | Secrets | MicrosoftAuth | Imap | Sieve | Dav | Graph
 >;
 
 // Accounts match case-insensitively; services and the keyring use the

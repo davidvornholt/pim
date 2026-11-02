@@ -75,6 +75,12 @@ export class DraftError extends Schema.TaggedError<DraftError>()('DraftError', {
   message: Schema.String,
 }) {}
 
+// A ManageSieve connection, login, or command failed, or the server rejected
+// a script; the message carries the server's reason.
+export class SieveError extends Schema.TaggedError<SieveError>()('SieveError', {
+  message: Schema.String,
+}) {}
+
 export class StaleUidError extends Schema.TaggedError<StaleUidError>()(
   'StaleUidError',
   {
@@ -99,4 +105,5 @@ export type MailError =
   | AttachmentNotFoundError
   | NoCalendarDataError
   | DraftError
+  | SieveError
   | StaleUidError;

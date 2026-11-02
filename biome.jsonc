@@ -34,6 +34,21 @@
       }
     },
     {
+      // ManageSieve: STARTTLS turns a connected socket into a TLS one, and
+      // Bun.connect sockets neither buffer writes nor stop handing the raw
+      // bytes to the plain socket's handlers after upgradeTLS, so this file
+      // uses node:net and node:tls. App code otherwise must not import Node
+      // built-ins.
+      "includes": ["apps/cli/src/features/mail/services/managesieve.ts"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noNodejsModules": "off"
+          }
+        }
+      }
+    },
+    {
       // File paths: Bun has no API for the home or temporary directory or for
       // joining paths, so these files use node:os and node:path to work on
       // Windows as well as Linux and macOS. App code otherwise must not import

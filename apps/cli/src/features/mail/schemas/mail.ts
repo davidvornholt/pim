@@ -164,4 +164,16 @@ export type TagDraftsResult = {
   readonly keyword: string;
 };
 
+// A server-side mail filter. The server runs at most one active script on
+// incoming mail.
+export type SieveScript = {
+  readonly name: string;
+  readonly active: boolean;
+};
+
+// warnings holds what the server reported about a script it accepted.
+export type SavedSieveScript = SieveScript & {
+  readonly warnings: string | null;
+};
+
 export const defaultSearchLimit = 20;
