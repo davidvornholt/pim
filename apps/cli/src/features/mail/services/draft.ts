@@ -17,10 +17,10 @@ import type {
   UpdateDraftInput,
 } from '../schemas/mail';
 import { selectDraftsFolder } from './draft-folder';
-import { requireCurrentUidValidity } from './draft-uid';
 import { listFolders, readMessage, readMessageContents } from './imap-ops';
 import { lockMailbox } from './mailbox-lock';
 import { buildCalendarReply, buildMime } from './mime';
+import { requireCurrentUidValidity } from './uid-validity';
 
 const readReplySource = (
   client: ImapFlow,

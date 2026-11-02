@@ -301,3 +301,32 @@ describe('pim contacts', () => {
     subprocessTimeoutMs,
   );
 });
+
+describe('pim mail move and mark', () => {
+  it(
+    'needs exactly one destination to move and one state to mark',
+    () => {
+      const batch = [
+        '--account=test@example.com',
+        '--folder=INBOX',
+        '--uid-validity=1',
+        '--uid=1',
+      ];
+      for (const extra of [[], ['--to=Archive', '--trash']]) {
+        const move = runCli(['mail', 'move', ...batch, ...extra]);
+        expect(move.exitCode).toBe(2);
+        expect(errorOf(move).message).toBe(
+          'pim mail move: pass either --to or --trash',
+        );
+      }
+      for (const extra of [[], ['--read', '--unread']]) {
+        const mark = runCli(['mail', 'mark', ...batch, ...extra]);
+        expect(mark.exitCode).toBe(2);
+        expect(errorOf(mark).message).toBe(
+          'pim mail mark: pass either --read or --unread',
+        );
+      }
+    },
+    subprocessTimeoutMs,
+  );
+});

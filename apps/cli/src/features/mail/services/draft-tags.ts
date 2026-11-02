@@ -3,9 +3,9 @@ import type { ImapFlow } from 'imapflow';
 import { DraftError, ImapError, type StaleUidError } from '../errors/errors';
 import type { TagDraftsInput, TagDraftsResult } from '../schemas/mail';
 import { requireDraftsFolder } from './draft';
-import { requireCurrentUidValidity } from './draft-uid';
 import { listFolders } from './imap-ops';
 import { lockMailbox } from './mailbox-lock';
+import { requireCurrentUidValidity } from './uid-validity';
 
 // IMAP keywords use the visible ASCII atom grammar. Submission keywords are
 // rejected case-insensitively because some servers and clients send messages

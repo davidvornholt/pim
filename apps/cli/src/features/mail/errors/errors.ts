@@ -75,6 +75,14 @@ export class DraftError extends Schema.TaggedError<DraftError>()('DraftError', {
   message: Schema.String,
 }) {}
 
+// pim refused to move or mark messages, for a reason the message states.
+export class MessageChangeError extends Schema.TaggedError<MessageChangeError>()(
+  'MessageChangeError',
+  {
+    message: Schema.String,
+  },
+) {}
+
 export class StaleUidError extends Schema.TaggedError<StaleUidError>()(
   'StaleUidError',
   {
@@ -99,4 +107,5 @@ export type MailError =
   | AttachmentNotFoundError
   | NoCalendarDataError
   | DraftError
+  | MessageChangeError
   | StaleUidError;

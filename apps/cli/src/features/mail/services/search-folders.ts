@@ -11,12 +11,12 @@ const excludedAllMailSpecialUse = new Set([
   '\\Trash',
 ]);
 
-const isSelectable = (folder: ListResponse): boolean =>
+export const isSelectable = (folder: ListResponse): boolean =>
   folder.listed &&
   !folder.flags.has('\\Noselect') &&
   !folder.flags.has('\\NonExistent');
 
-const samePath = (left: string, right: string): boolean =>
+export const samePath = (left: string, right: string): boolean =>
   left === right ||
   (left.toUpperCase() === 'INBOX' && right.toUpperCase() === 'INBOX');
 

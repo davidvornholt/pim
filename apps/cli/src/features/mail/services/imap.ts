@@ -1,4 +1,5 @@
 import { Context, Effect, Layer } from 'effect';
+import type { ImapFlow } from 'imapflow';
 import { hasMail, mailAccount } from '../../../shared/accounts/account';
 import { AccountConfig } from '../../../shared/accounts/config';
 import { Secrets } from '../../../shared/accounts/secrets';
@@ -12,6 +13,10 @@ import type {
   DraftInput,
   DraftLocation,
   FullMessage,
+  MarkMessagesResult,
+  MessageBatch,
+  MoveDestination,
+  MoveMessagesResult,
   SearchOptions,
   SearchOptionsInput,
   SearchResult,
@@ -42,6 +47,7 @@ import { listFolders, readMessage } from './imap-ops';
 import { searchMailboxes } from './imap-search';
 import { makeWarmClientCache } from './imap-warm-cache';
 import { imapApp, imapLoginFor } from './login';
+import { markMessages, moveMessages } from './message-changes';
 import { skipsUnsubscribed } from './search-folders';
 
 export const searchWithDedicatedClient = <Client extends WarmClient, Result>(
@@ -109,11 +115,17 @@ const makeConnections = Effect.gen(function* () {
           searchMailboxes(candidate, options, skipsUnsubscribed(account)),
       );
     });
+  // Runs `use` on the account's warm connection.
+  const withClient = <A>(
+    email: string,
+    use: (client: ImapFlow) => Effect.Effect<A, MailError>,
+  ) => clientFor(email).pipe(Effect.flatMap(use));
   yield* Effect.addFinalizer(() => closeAll);
   return {
     config,
     getMailAccount,
     clientFor,
+    withClient,
     searchMailbox,
     searchMailboxWithinDeadline,
   } as const;
@@ -124,6 +136,7 @@ const makeImap = Effect.gen(function* () {
     config,
     getMailAccount,
     clientFor,
+    withClient,
     searchMailbox,
     searchMailboxWithinDeadline,
   } = yield* makeConnections;
@@ -163,28 +176,34 @@ const makeImap = Effect.gen(function* () {
       folder: string,
       uid: number,
     ): Effect.Effect<FullMessage, MailError> =>
-      clientFor(email).pipe(
-        Effect.flatMap((client) => readMessage(client, folder, uid)),
-      ),
+      withClient(email, (client) => readMessage(client, folder, uid)),
     readAttachment: (
       email: string,
       folder: string,
       uid: number,
       part: string,
     ): Effect.Effect<AttachmentContent, MailError> =>
-      clientFor(email).pipe(
-        Effect.flatMap((client) => readAttachment(client, folder, uid, part)),
-      ),
+      withClient(email, (client) => readAttachment(client, folder, uid, part)),
     readCalendar: (
       email: string,
       folder: string,
       uid: number,
     ): Effect.Effect<CalendarMessage, MailError> =>
-      clientFor(email).pipe(
-        Effect.flatMap((client) =>
-          readCalendarMessage(client, email, folder, uid),
-        ),
+      withClient(email, (client) =>
+        readCalendarMessage(client, email, folder, uid),
       ),
+    moveMessages: (
+      batch: MessageBatch,
+      destination: MoveDestination,
+    ): Effect.Effect<MoveMessagesResult, MailError> =>
+      withClient(batch.account, (client) =>
+        moveMessages(client, batch, destination),
+      ),
+    markMessages: (
+      batch: MessageBatch,
+      read: boolean,
+    ): Effect.Effect<MarkMessagesResult, MailError> =>
+      withClient(batch.account, (client) => markMessages(client, batch, read)),
     saveCalendarReply: (
       draft: CalendarReplyDraft,
     ): Effect.Effect<DraftLocation, MailError> =>
@@ -210,13 +229,9 @@ const makeImap = Effect.gen(function* () {
     tagDrafts: (
       input: TagDraftsInput,
     ): Effect.Effect<TagDraftsResult, MailError> =>
-      clientFor(input.account).pipe(
-        Effect.flatMap((client) => tagDrafts(client, input)),
-      ),
+      withClient(input.account, (client) => tagDrafts(client, input)),
     deleteDraft: (handle: DraftHandle): Effect.Effect<void, MailError> =>
-      clientFor(handle.account).pipe(
-        Effect.flatMap((client) => removeDraft(client, handle)),
-      ),
+      withClient(handle.account, (client) => removeDraft(client, handle)),
   } as const;
 });
 
