@@ -115,7 +115,6 @@ const makeConnections = Effect.gen(function* () {
           searchMailboxes(candidate, options, skipsUnsubscribed(account)),
       );
     });
-  // Runs `use` on the account's warm connection.
   const withClient = <A>(
     email: string,
     use: (client: ImapFlow) => Effect.Effect<A, MailError>,

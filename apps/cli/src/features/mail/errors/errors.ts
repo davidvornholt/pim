@@ -75,7 +75,6 @@ export class DraftError extends Schema.TaggedError<DraftError>()('DraftError', {
   message: Schema.String,
 }) {}
 
-// pim refused to move or mark messages, for a reason the message states.
 export class MessageChangeError extends Schema.TaggedError<MessageChangeError>()(
   'MessageChangeError',
   {
