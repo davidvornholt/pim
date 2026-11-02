@@ -245,8 +245,6 @@ export const makeSession = (wire: SieveWire) => ({
 
 export type SieveSession = ReturnType<typeof makeSession>;
 
-// Saves a script, optionally activates it, and reports whether it is active
-// now. The server checks the script and keeps the old one if it rejects it.
 export const saveScript = (
   session: SieveSession,
   name: string,

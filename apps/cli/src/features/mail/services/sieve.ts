@@ -13,8 +13,6 @@ import {
   sievePort,
 } from './managesieve';
 
-// Sieve filters live on the IMAP host's ManageSieve port and use the mail
-// login. Each call opens its own connection.
 const makeSieve = Effect.gen(function* () {
   const config = yield* AccountConfig;
   const secrets = yield* Secrets;
