@@ -175,6 +175,12 @@ const capabilities = (reply: SieveReply): ReadonlyMap<string, string> =>
     reply.lines.map(([key = '', value = '']) => [key.toUpperCase(), value]),
   );
 
+// Redacts in order, so list a secret before any that may occur inside it.
+const redact = (text: string, secrets: ReadonlyArray<string>) =>
+  secrets
+    .filter((secret) => secret !== '')
+    .reduce((rest, secret) => rest.replaceAll(secret, '[redacted]'), text);
+
 // Logs in with SASL PLAIN, only after STARTTLS, so the password never
 // crosses the network in cleartext.
 export const logIn = (
@@ -205,13 +211,15 @@ export const logIn = (
       );
     }
     const token = Buffer.from(`\0${user}\0${password}`).toString('base64');
+    // pim prints these errors, and a server may echo the credentials in them.
+    const hide = (text: string) => redact(text, [token, password]);
     const answer = yield* exchange(
       wire,
       `AUTHENTICATE "PLAIN" ${literal(token)}`,
-    );
+    ).pipe(Effect.mapError((error) => failure(hide(error.message))));
     if (answer.status !== 'OK') {
       return yield* failure(
-        `the ManageSieve server rejected the login: ${reason(answer)}. If the mail password changed, ask the user to run "pim login".`,
+        `the ManageSieve server rejected the login: ${hide(reason(answer))}. If the mail password changed, ask the user to run "pim login".`,
       );
     }
   });

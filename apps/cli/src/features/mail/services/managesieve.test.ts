@@ -68,19 +68,23 @@ describe('logIn', () => {
     expect(sent).toEqual(['STARTTLS\r\n', '<TLS>']);
   });
 
-  it('points to "pim login" when the server rejects the password', async () => {
+  it('points to "pim login" without echoing the rejected password', async () => {
+    const token = Buffer.from(`\0me@example.com\0${password}`).toString(
+      'base64',
+    );
     const { wire } = fakeWire([
       greeting,
       'OK\r\n',
       secured,
-      'NO "Authentication failed."\r\n',
+      `NO "Authentication failed for ${password} (${token})."\r\n`,
     ]);
     const error = await failureOf(logIn(wire, 'me@example.com', password));
 
     expect(error._tag).toBe('SieveError');
-    expect(error.message).toContain('Authentication failed.');
+    expect(error.message).toContain('Authentication failed for [redacted]');
     expect(error.message).toContain('pim login');
     expect(error.message).not.toContain(password);
+    expect(error.message).not.toContain(token);
   });
 });
 
