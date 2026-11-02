@@ -164,4 +164,28 @@ export type TagDraftsResult = {
   readonly keyword: string;
 };
 
+// Messages in one folder, identified by the uids and uidValidity of search
+// hits.
+export type MessageBatch = {
+  readonly account: string;
+  readonly folder: string;
+  readonly uidValidity: string;
+  readonly uids: ReadonlyArray<number>;
+};
+
+export type MoveDestination =
+  | { readonly kind: 'folder'; readonly folder: string }
+  | { readonly kind: 'trash' };
+
+// newUid and to.uidValidity are null when the server does not report them.
+export type MoveMessagesResult = MessageBatch & {
+  readonly to: { readonly folder: string; readonly uidValidity: string | null };
+  readonly moved: ReadonlyArray<{
+    readonly uid: number;
+    readonly newUid: number | null;
+  }>;
+};
+
+export type MarkMessagesResult = MessageBatch & { readonly read: boolean };
+
 export const defaultSearchLimit = 20;
