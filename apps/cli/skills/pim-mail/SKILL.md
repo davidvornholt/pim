@@ -1,6 +1,6 @@
 ---
 name: pim-mail
-description: Search, read, move, mark, and draft email in the user's IMAP accounts with the pim command. Use when the user asks about their email, wants it sorted or cleaned up, or wants a draft or reply. It cannot send mail.
+description: Search, read, move, mark, and draft email and manage server-side mail filters (Sieve) in the user's IMAP accounts with the pim command. Use when the user asks about their email, wants it sorted or cleaned up, wants incoming mail filed automatically, or wants a draft or reply. It cannot send mail.
 ---
 
 # pim mail
@@ -15,5 +15,6 @@ Run `pim mail --help` for the mail commands and `pim <command> --help` for optio
 - A message with a `text/calendar` attachment carries calendar data, such as an invitation. Read and answer it with `pim calendar invitation` and `pim calendar respond` from the pim-calendar skill, not with a plain reply. `pim mail draft update` drops the calendar data from an answer draft; run `pim calendar respond` again instead.
 - Delete a draft only when the user asked for it.
 - Move or mark messages only when the user asked for it. To delete a message, move it with `--trash`.
+- Change Sieve filters only when the user asked for it. `pim mail sieve put` replaces the whole script, so start from `pim mail sieve get` of the active script, keep its other rules, and pipe the result back. Filters act only on mail that arrives later.
 - A search lists accounts it could not search under `failures`. Read it before saying nothing was found.
 - If an account has no working login, ask the user to run `pim login`.

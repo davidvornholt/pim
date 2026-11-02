@@ -82,6 +82,12 @@ export class MessageChangeError extends Schema.TaggedError<MessageChangeError>()
   },
 ) {}
 
+// A ManageSieve connection, login, or command failed, or the server rejected
+// a script; the message carries the server's reason.
+export class SieveError extends Schema.TaggedError<SieveError>()('SieveError', {
+  message: Schema.String,
+}) {}
+
 export class StaleUidError extends Schema.TaggedError<StaleUidError>()(
   'StaleUidError',
   {
@@ -107,4 +113,5 @@ export type MailError =
   | NoCalendarDataError
   | DraftError
   | MessageChangeError
+  | SieveError
   | StaleUidError;
