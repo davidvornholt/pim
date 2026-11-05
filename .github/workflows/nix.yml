@@ -1,9 +1,6 @@
 name: Nix
 
-# Builds the Nix package that other flakes consume as
-# packages.<system>.default. Unlike the Standards gate, this runs on draft pull
-# requests too, so a stale node_modules hash shows up while a change is still
-# a draft. It's required because Standards auto-merge waits only for required
+# This build is required because Standards auto-merge waits only for required
 # checks and `check` doesn't build this package, so a Dependabot update would
 # otherwise land with a stale hash.
 on:
