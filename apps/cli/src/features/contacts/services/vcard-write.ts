@@ -34,8 +34,6 @@ export type ContactChanges = ContactText & {
 const fractionalSeconds = /\.\d+Z$/u;
 const mailtoScheme = /^mailto:/iu;
 const nonDigits = /\D/gu;
-const telScheme = /^tel:/iu;
-const valueParameter = /;VALUE=/iu;
 
 const timestamp = (ms: number): string =>
   new Date(ms).toISOString().replace(fractionalSeconds, 'Z');
@@ -145,45 +143,83 @@ const removeValues = (
   return Result.void;
 };
 
+type StoredProperty = { readonly text: string; readonly jCal: string };
+
+type EditedCard = {
+  readonly card: ICAL.Component;
+  readonly stored: Map<ICAL.Property, StoredProperty>;
+};
+
+const fold = /\r\n[ \t]/gu;
+
+// An unfolded stored line, matching only where this split and ical.js read it
+// alike. ical.js also accepts a stray quote, as in X-FOO=a"b, so every value
+// must be quoted whole or hold no quote. Past the first of several values,
+// ical.js ends the parameter at ; or : even in quotes and can fail at =, so
+// those values must hold none of them.
+const storedLine =
+  /^(?:[^";:.]+\.)?(?<name>[^";:.]+)(?<parameters>(?:;[^";:=]+=(?:"[^"]*"|[^";:,]*)(?:,(?:"[^";:=]*"|[^";:,=]*))*)*):(?<value>.*)$/su;
+const storedParameter = /;(?<name>[^=]+)=(?:"[^"]*"|[^";])*/gu;
+
+const withTypes = (
+  text: string,
+  types: ReadonlyArray<string>,
+): string | undefined => {
+  const { name, parameters, value } =
+    storedLine.exec(text.replace(fold, ''))?.groups ?? {};
+  if (name === undefined || parameters === undefined || value === undefined) {
+    return undefined;
+  }
+  const kept = parameters.replace(
+    storedParameter,
+    (parameter, parameterName: string) =>
+      parameterName.toUpperCase() === 'TYPE' ? '' : parameter,
+  );
+  return ICAL.helpers.foldline(
+    `${name}${kept};TYPE=${types.join(',')}:${value}`,
+  );
+};
+
 // Gives the property the type. TYPE values such as pref stay, because they say
 // nothing about what the value is for. Apple shows a label over the type, so
-// the property leaves its labeled group. ical.js takes uri as the default of a
-// vCard 4 phone number and would drop VALUE=uri from the line it writes.
+// the property leaves its labeled group.
 const setType = (
-  card: ICAL.Component,
+  { card, stored }: EditedCard,
   property: ICAL.Property,
   type: string,
 ): void => {
-  property.setParameter('type', [
+  const types = [
     ...new Set([...technicalTypesOf(property), ...type.split(',')]),
-  ]);
+  ];
+  property.setParameter('type', types);
   removeLabels(card, property);
   property.removeParameter('group');
-  if (
-    telScheme.test(textValue(property)) &&
-    !valueParameter.test(property.toICALString())
-  ) {
-    property.setParameter('value', 'uri');
+  const original = stored.get(property);
+  const text = original && withTypes(original.text, types);
+  if (text !== undefined) {
+    stored.set(property, { text, jCal: JSON.stringify(property.toJSON()) });
   }
 };
 
 // Adds the values the contact does not have yet, and sets the type passed with
 // a value on the properties that hold it.
 const addValues = (
-  card: ICAL.Component,
+  edited: EditedCard,
   name: string,
   values: ReadonlyArray<TypedValue>,
   key: (value: string) => string,
 ): void => {
   for (const { value, type } of values) {
-    const stored = card
+    const holding = edited.card
       .getAllProperties(name)
       .filter((property) => key(textValue(property)) === key(value));
     const properties =
-      stored.length > 0 ? stored : [card.addPropertyWithValue(name, value)];
+      holding.length > 0
+        ? holding
+        : [edited.card.addPropertyWithValue(name, value)];
     if (type !== undefined) {
       for (const property of properties) {
-        setType(card, property, type);
+        setType(edited, property, type);
       }
     }
   }
@@ -205,8 +241,9 @@ export const newVCard = (contact: NewContact, nowMs: number): string => {
     'fn',
     clean(contact.name) ?? derivedName(card) ?? '',
   );
-  addValues(card, 'email', contact.emails, emailKey);
-  addValues(card, 'tel', contact.phones, phoneKey);
+  const edited = { card, stored: new Map() };
+  addValues(edited, 'email', contact.emails, emailKey);
+  addValues(edited, 'tel', contact.phones, phoneKey);
   card.addPropertyWithValue('rev', timestamp(nowMs));
   return card.toString();
 };
@@ -229,14 +266,12 @@ const contentLines = (text: string): ReadonlyArray<string> => {
   return lines;
 };
 
-type StoredProperty = { readonly text: string; readonly jCal: string };
-
 // The stored text of each property ical.js read from the vCard, provided
 // the lines and properties pair up one to one.
 const storedProperties = (
   text: string,
   card: ICAL.Component,
-): ReadonlyMap<ICAL.Property, StoredProperty> | undefined => {
+): Map<ICAL.Property, StoredProperty> | undefined => {
   const lines = contentLines(text);
   const inner = lines.slice(1, -1);
   const properties = card.getAllProperties();
@@ -253,8 +288,6 @@ const storedProperties = (
     : undefined;
 };
 
-const fold = /\r\n[ \t]/gu;
-
 // Whether ical.js writes the property as stored, apart from the case of its
 // name, group, and parameter names. N is changed in place, so this tells
 // whether the parts pim keeps survive the change; ical.js merges repeated
@@ -268,8 +301,9 @@ const writtenAsStored = (
 
 // ical.js does not write every vCard back as it read it: it drops
 // VALUE=uri from vCard 4 phone numbers and the escape from a one-part
-// value such as ORG:A\;B. So properties pim did not change keep their
-// stored text, and only changed and new ones are written by ical.js.
+// value such as ORG:A\;B. So a property whose JSON still matches its entry
+// keeps the stored text there, and only other changed and new properties are
+// written by ical.js.
 const serialize = (
   card: ICAL.Component,
   stored: ReadonlyMap<ICAL.Property, StoredProperty>,
@@ -324,8 +358,8 @@ export const applyContactChanges = (
       `${removedPhones.failure} is not a phone number of this contact`,
     );
   }
-  addValues(card, 'email', changes.addEmails, emailKey);
-  addValues(card, 'tel', changes.addPhones, phoneKey);
+  addValues({ card, stored }, 'email', changes.addEmails, emailKey);
+  addValues({ card, stored }, 'tel', changes.addPhones, phoneKey);
   if (changes.givenName !== undefined || changes.familyName !== undefined) {
     const nameProperty = card.getFirstProperty('n');
     if (nameProperty !== null && !writtenAsStored(nameProperty, stored)) {

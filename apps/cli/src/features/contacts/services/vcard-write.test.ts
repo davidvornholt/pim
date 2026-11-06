@@ -249,17 +249,17 @@ describe('applyContactChanges with types', () => {
     [
       'VERSION:4.0',
       'TEL;VALUE=uri;TYPE="voice,cell":tel:+49-170-1234567',
-      'TEL;TYPE=voice,work;VALUE=uri:tel:+49-170-1234567',
+      'TEL;VALUE=uri;TYPE=voice,work:tel:+49-170-1234567',
     ],
     [
       'VERSION:4.0',
       'TEL;VALUE=text;TYPE=cell:+49 170 1234567',
-      'TEL;TYPE=work;VALUE=TEXT:+49 170 1234567',
+      'TEL;VALUE=text;TYPE=work:+49 170 1234567',
     ],
     [
       'VERSION:3.0',
       'TEL;VALUE=uri:tel:+49-170-1234567',
-      'TEL;TYPE=work;VALUE=URI:tel:+49-170-1234567',
+      'TEL;VALUE=uri;TYPE=work:tel:+49-170-1234567',
     ],
   ])('keeps the value type of %s %s', (version, line, written) => {
     const card = ['BEGIN:VCARD', version, 'FN:Ada', line, 'END:VCARD'].join(
@@ -270,5 +270,75 @@ describe('applyContactChanges with types', () => {
         addPhones: [{ value: '+491701234567', type: 'work' }],
       }),
     ).toContain(written);
+  });
+});
+
+describe('applyContactChanges with the type of a stored line', () => {
+  it.each([
+    [
+      'TEL;VALUE=text;TYPE=home:+123\\;456',
+      { addPhones: [{ value: '+123456', type: 'work' }] },
+      'TEL;VALUE=text;TYPE=work:+123\\;456',
+    ],
+    [
+      'EMAIL;TYPE=HOME;X-FOO=one;X-FOO=two:a@example.org',
+      { addEmails: [{ value: 'a@example.org', type: 'work' }] },
+      'EMAIL;X-FOO=one;X-FOO=two;TYPE=work:a@example.org',
+    ],
+    [
+      'EMAIL;X-FOO="a:b":a@example.org',
+      { addEmails: [{ value: 'a@example.org', type: 'work' }] },
+      'EMAIL;X-FOO="a:b";TYPE=work:a@example.org',
+    ],
+    [
+      'EMAIL;X-FOO="a;type=b";Type=pref;type=CELL:a@example.org',
+      { addEmails: [{ value: 'a@example.org', type: 'work' }] },
+      'EMAIL;X-FOO="a;type=b";TYPE=pref,work:a@example.org',
+    ],
+    [
+      'EMAIL;TY\r\n PE=HOME:a@\r\n\texample.org',
+      { addEmails: [{ value: 'a@example.org', type: 'work' }] },
+      'EMAIL;TYPE=work:a@example.org',
+    ],
+    [
+      'email;x-foo=^n:a@example.org',
+      {
+        addEmails: [
+          { value: 'a@example.org', type: 'home' },
+          { value: 'A@example.org', type: 'work' },
+        ],
+      },
+      'email;x-foo=^n;TYPE=work:a@example.org',
+    ],
+    // ical.js reads a stray quote that a quote-aware split cannot place, so it
+    // writes such a line, with the quote encoded as RFC 6868 says.
+    [
+      'EMAIL;X-FOO=a"b;TYPE=home:a@example.org',
+      { addEmails: [{ value: 'a@example.org', type: 'work' }] },
+      "EMAIL;X-FOO=a^'b;TYPE=work:a@example.org",
+    ],
+  ])('changes only the type parameters of %s', (line, changes, written) => {
+    expect(changed(cardOf('FN:Ada', line), changes)).toEqual([
+      'BEGIN:VCARD',
+      'VERSION:3.0',
+      'FN:Ada',
+      written,
+      'REV:20261028T091500Z',
+      'END:VCARD',
+    ]);
+  });
+
+  it('folds a stored line again after changing its type', () => {
+    const parameter = `X-FOO=${'x'.repeat(70)}`;
+    expect(
+      changed(cardOf('FN:Ada', `EMAIL;${parameter}:a@example.org`), {
+        addEmails: [{ value: 'a@example.org', type: 'work' }],
+      }),
+    ).toEqual(
+      expect.arrayContaining([
+        `EMAIL;${parameter.slice(0, 69)}`,
+        ` ${parameter.slice(69)};TYPE=work:a@example.org`,
+      ]),
+    );
   });
 });
