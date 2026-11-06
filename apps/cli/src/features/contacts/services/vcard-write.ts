@@ -1,6 +1,7 @@
 import { Result } from 'effect';
 import ICAL from 'ical.js';
-import { clean, firstText, joined, parts } from './vcard';
+import type { TypedValue } from '../schemas/contacts';
+import { clean, firstText, joined, parts, technicalTypesOf } from './vcard';
 
 const productId = '-//pim//EN';
 // New contacts are vCard 3.0, which every CardDAV server and client reads.
@@ -19,14 +20,14 @@ export type ContactText = {
 
 export type NewContact = ContactText & {
   readonly uid: string;
-  readonly emails: ReadonlyArray<string>;
-  readonly phones: ReadonlyArray<string>;
+  readonly emails: ReadonlyArray<TypedValue>;
+  readonly phones: ReadonlyArray<TypedValue>;
 };
 
 export type ContactChanges = ContactText & {
-  readonly addEmails: ReadonlyArray<string>;
+  readonly addEmails: ReadonlyArray<TypedValue>;
   readonly removeEmails: ReadonlyArray<string>;
-  readonly addPhones: ReadonlyArray<string>;
+  readonly addPhones: ReadonlyArray<TypedValue>;
   readonly removePhones: ReadonlyArray<string>;
 };
 
@@ -99,20 +100,16 @@ const groupOf = (property: ICAL.Property): string | undefined => {
   return typeof group === 'string' ? group.toLowerCase() : undefined;
 };
 
-// Removes the property, and the labels Apple keeps in its group, such as
-// item1.X-ABLabel for item1.EMAIL, once the group holds nothing else.
-const removeWithLabels = (
-  card: ICAL.Component,
-  property: ICAL.Property,
-): void => {
+// Removes the labels Apple keeps in the group of the property, such as
+// item1.X-ABLabel for item1.EMAIL, unless the group holds something else.
+const removeLabels = (card: ICAL.Component, property: ICAL.Property): void => {
   const group = groupOf(property);
-  card.removeProperty(property);
   if (group === undefined) {
     return;
   }
   const rest = card
     .getAllProperties()
-    .filter((other) => groupOf(other) === group);
+    .filter((other) => other !== property && groupOf(other) === group);
   if (rest.every((other) => other.name === 'x-ablabel')) {
     for (const label of rest) {
       card.removeProperty(label);
@@ -139,25 +136,91 @@ const removeValues = (
   const keys = new Set(values.map(key));
   for (const property of properties) {
     if (keys.has(key(textValue(property)))) {
-      removeWithLabels(card, property);
+      removeLabels(card, property);
+      card.removeProperty(property);
     }
   }
   return Result.void;
 };
 
-// Adds the values the contact does not have yet.
+type StoredProperty = { readonly text: string; readonly jCal: string };
+
+type EditedCard = {
+  readonly card: ICAL.Component;
+  readonly stored: Map<ICAL.Property, StoredProperty>;
+};
+
+const fold = /\r\n[ \t]/gu;
+
+// An unfolded stored line, matching only where this split and ical.js read it
+// alike. ical.js also accepts a stray quote, as in X-FOO=a"b, so every value
+// must be quoted whole or hold no quote. Past the first of several values,
+// ical.js ends the parameter at ; or : even in quotes and can fail at =, so
+// those values must hold none of them.
+const storedLine =
+  /^(?:[^";:.]+\.)?(?<name>[^";:.]+)(?<parameters>(?:;[^";:=]+=(?:"[^"]*"|[^";:,]*)(?:,(?:"[^";:=]*"|[^";:,=]*))*)*):(?<value>.*)$/su;
+const storedParameter = /;(?<name>[^=]+)=(?:"[^"]*"|[^";])*/gu;
+
+const withTypes = (
+  text: string,
+  types: ReadonlyArray<string>,
+): string | undefined => {
+  const { name, parameters, value } =
+    storedLine.exec(text.replace(fold, ''))?.groups ?? {};
+  if (name === undefined || parameters === undefined || value === undefined) {
+    return undefined;
+  }
+  const kept = parameters.replace(
+    storedParameter,
+    (parameter, parameterName: string) =>
+      parameterName.toUpperCase() === 'TYPE' ? '' : parameter,
+  );
+  return ICAL.helpers.foldline(
+    `${name}${kept};TYPE=${types.join(',')}:${value}`,
+  );
+};
+
+// TYPE values such as pref stay, because they say nothing about what the value
+// is for. The property leaves its labeled group, because Apple shows a label
+// over the type. The stored text is patched because ical.js would also change
+// the rest of the line: it adds a backslash to a value such as +123\;456 and
+// keeps only the last of a repeated parameter.
+const setType = (
+  { card, stored }: EditedCard,
+  property: ICAL.Property,
+  type: string,
+): void => {
+  const types = [
+    ...new Set([...technicalTypesOf(property), ...type.split(',')]),
+  ];
+  property.setParameter('type', types);
+  removeLabels(card, property);
+  property.removeParameter('group');
+  const original = stored.get(property);
+  const text = original && withTypes(original.text, types);
+  if (text !== undefined) {
+    stored.set(property, { text, jCal: JSON.stringify(property.toJSON()) });
+  }
+};
+
 const addValues = (
-  card: ICAL.Component,
+  edited: EditedCard,
   name: string,
-  values: ReadonlyArray<string>,
+  values: ReadonlyArray<TypedValue>,
   key: (value: string) => string,
 ): void => {
-  for (const value of values) {
-    const present = card
+  for (const { value, type } of values) {
+    const holding = edited.card
       .getAllProperties(name)
-      .some((property) => key(textValue(property)) === key(value));
-    if (!present) {
-      card.addPropertyWithValue(name, value);
+      .filter((property) => key(textValue(property)) === key(value));
+    const properties =
+      holding.length > 0
+        ? holding
+        : [edited.card.addPropertyWithValue(name, value)];
+    if (type !== undefined) {
+      for (const property of properties) {
+        setType(edited, property, type);
+      }
     }
   }
 };
@@ -178,8 +241,9 @@ export const newVCard = (contact: NewContact, nowMs: number): string => {
     'fn',
     clean(contact.name) ?? derivedName(card) ?? '',
   );
-  addValues(card, 'email', contact.emails, emailKey);
-  addValues(card, 'tel', contact.phones, phoneKey);
+  const edited = { card, stored: new Map() };
+  addValues(edited, 'email', contact.emails, emailKey);
+  addValues(edited, 'tel', contact.phones, phoneKey);
   card.addPropertyWithValue('rev', timestamp(nowMs));
   return card.toString();
 };
@@ -202,14 +266,12 @@ const contentLines = (text: string): ReadonlyArray<string> => {
   return lines;
 };
 
-type StoredProperty = { readonly text: string; readonly jCal: string };
-
 // The stored text of each property ical.js read from the vCard, provided
 // the lines and properties pair up one to one.
 const storedProperties = (
   text: string,
   card: ICAL.Component,
-): ReadonlyMap<ICAL.Property, StoredProperty> | undefined => {
+): Map<ICAL.Property, StoredProperty> | undefined => {
   const lines = contentLines(text);
   const inner = lines.slice(1, -1);
   const properties = card.getAllProperties();
@@ -226,8 +288,6 @@ const storedProperties = (
     : undefined;
 };
 
-const fold = /\r\n[ \t]/gu;
-
 // Whether ical.js writes the property as stored, apart from the case of its
 // name, group, and parameter names. N is changed in place, so this tells
 // whether the parts pim keeps survive the change; ical.js merges repeated
@@ -241,8 +301,9 @@ const writtenAsStored = (
 
 // ical.js does not write every vCard back as it read it: it drops
 // VALUE=uri from vCard 4 phone numbers and the escape from a one-part
-// value such as ORG:A\;B. So properties pim did not change keep their
-// stored text, and only changed and new ones are written by ical.js.
+// value such as ORG:A\;B. So a property whose JSON still matches its entry
+// keeps the stored text there, and only other changed and new properties are
+// written by ical.js.
 const serialize = (
   card: ICAL.Component,
   stored: ReadonlyMap<ICAL.Property, StoredProperty>,
@@ -297,8 +358,8 @@ export const applyContactChanges = (
       `${removedPhones.failure} is not a phone number of this contact`,
     );
   }
-  addValues(card, 'email', changes.addEmails, emailKey);
-  addValues(card, 'tel', changes.addPhones, phoneKey);
+  addValues({ card, stored }, 'email', changes.addEmails, emailKey);
+  addValues({ card, stored }, 'tel', changes.addPhones, phoneKey);
   if (changes.givenName !== undefined || changes.familyName !== undefined) {
     const nameProperty = card.getFirstProperty('n');
     if (nameProperty !== null && !writtenAsStored(nameProperty, stored)) {

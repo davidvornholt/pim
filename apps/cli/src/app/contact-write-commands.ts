@@ -1,4 +1,5 @@
 import { Effect } from 'effect';
+import type { TypedValue } from '../features/contacts/schemas/contacts';
 import {
   createContact,
   deleteContact,
@@ -43,6 +44,32 @@ const checked = (
       );
 };
 
+// mailto: and tel: are schemes rather than types.
+const typePrefix =
+  /^(?!(?:mailto|tel):)(?<type>[a-z][a-z\d-]*(?:,[a-z][a-z\d-]*)*):(?<value>.*)$/iu;
+
+export const typedValue = (given: string): TypedValue => {
+  const { type, value } = typePrefix.exec(given)?.groups ?? {};
+  return type === undefined || value === undefined
+    ? { value: given }
+    : { value: value.trim(), type: type.toLowerCase() };
+};
+
+const checkedTyped = (
+  command: string,
+  option: string,
+  values: ReadonlyArray<string>,
+  kind: ValueKind,
+): Effect.Effect<ReadonlyArray<TypedValue>, UsageError> => {
+  const typed = values.map((value) => typedValue(value.trim()));
+  return checked(
+    command,
+    option,
+    typed.map(({ value }) => value),
+    kind,
+  ).pipe(Effect.as(typed));
+};
+
 type TextValues = Readonly<Record<keyof ContactText, string | undefined>>;
 
 // The text options that were given, trimmed.
@@ -58,7 +85,7 @@ const create = defineCommand(
     name: 'contacts create',
     summary: 'Create a contact',
     description:
-      'Create a contact in one address book. Pass at least one of --name, --given-name, --family-name, or --organization; without --name, the name is built from the others. Repeat --email and --phone for several. Prints the contact with its href and, when the server returns one, its etag.',
+      'Create a contact in one address book. Pass at least one of --name, --given-name, --family-name, or --organization; without --name, the name is built from the others. Repeat --email and --phone for several. A type goes before a value, as in --email work:ana@example.org or --phone cell:+491701234567. Prints the contact with its href and, when the server returns one, its etag.',
     flags: {
       account: accountFlag,
       addressBook: flag.text(
@@ -71,8 +98,8 @@ const create = defineCommand(
       organization: flag.optionalText('text', 'Organization'),
       title: flag.optionalText('text', 'Job title'),
       note: flag.optionalText('text', 'Note'),
-      email: flag.texts('address', 'Email address'),
-      phone: flag.texts('number', 'Phone number'),
+      email: flag.texts('[type:]address', 'Email address'),
+      phone: flag.texts('[type:]number', 'Phone number'),
     },
   },
   ({
@@ -97,8 +124,8 @@ const create = defineCommand(
       const request = {
         ...text,
         addressBook,
-        emails: yield* checked(command, 'email', emails, emailKind),
-        phones: yield* checked(command, 'phone', phone, phoneKind),
+        emails: yield* checkedTyped(command, 'email', emails, emailKind),
+        phones: yield* checkedTyped(command, 'phone', phone, phoneKind),
       };
       const config = yield* AccountConfig;
       const account = yield* config.getAccount(email);
@@ -117,7 +144,7 @@ const update = defineCommand(
     name: 'contacts update',
     summary: 'Change a contact',
     description:
-      'Change a contact. Pass the etag from "pim contacts get"; if the contact changed since, nothing is written. An empty --given-name, --family-name, --organization, --title, or --note removes it. A name that was built from the given and family name or the organization follows changes to them; --name sets it. Repeat the email and phone options for several values. Phone numbers match by their digits, and removing a value the contact lacks writes nothing. pim does not change contact groups. Prints the changed contact with its new etag, when the server returns one.',
+      'Change a contact. Pass the etag from "pim contacts get"; if the contact changed since, nothing is written. An empty --given-name, --family-name, --organization, --title, or --note removes it. A name that was built from the given and family name or the organization follows changes to them; --name sets it. Repeat the email and phone options for several values. A type goes before an added value, as in --add-email work:ana@example.org, and adding a value the contact has sets its type. Phone numbers match by their digits, and removing a value the contact lacks writes nothing. pim does not change contact groups. Prints the changed contact with its new etag, when the server returns one.',
     flags: {
       ...targetFlags,
       name: flag.optionalText('text', 'New name to show'),
@@ -126,9 +153,9 @@ const update = defineCommand(
       organization: flag.optionalText('text', 'New organization'),
       title: flag.optionalText('text', 'New job title'),
       note: flag.optionalText('text', 'New note'),
-      addEmail: flag.texts('address', 'Email address to add'),
+      addEmail: flag.texts('[type:]address', 'Email address to add'),
       removeEmail: flag.texts('address', 'Email address to remove'),
-      addPhone: flag.texts('number', 'Phone number to add'),
+      addPhone: flag.texts('[type:]number', 'Phone number to add'),
       removePhone: flag.texts('number', 'Phone number to remove'),
     },
   },
@@ -162,14 +189,24 @@ const update = defineCommand(
       }
       const changes = {
         ...text,
-        addEmails: yield* checked(command, 'add-email', addEmail, emailKind),
+        addEmails: yield* checkedTyped(
+          command,
+          'add-email',
+          addEmail,
+          emailKind,
+        ),
         removeEmails: yield* checked(
           command,
           'remove-email',
           removeEmail,
           emailKind,
         ),
-        addPhones: yield* checked(command, 'add-phone', addPhone, phoneKind),
+        addPhones: yield* checkedTyped(
+          command,
+          'add-phone',
+          addPhone,
+          phoneKind,
+        ),
         removePhones: yield* checked(
           command,
           'remove-phone',

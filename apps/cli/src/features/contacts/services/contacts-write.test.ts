@@ -61,7 +61,7 @@ describe('createContact', () => {
       createContact(davAccount, {
         addressBook: 'Contacts',
         ...ada,
-        emails: ['ada@example.org'],
+        emails: [{ value: 'ada@example.org', type: 'work' }],
       }),
     );
     const { uid } = newHref.exec(value.href)?.groups ?? {};
@@ -70,7 +70,7 @@ describe('createContact', () => {
       etag: '"c1"',
       uid: uid ?? 'no uid in the href',
       name: 'Ada Lovelace',
-      emails: [{ value: 'ada@example.org' }],
+      emails: [{ value: 'ada@example.org', type: 'work' }],
     });
     const [put] = writeRequests(requests);
     expect(put?.headers.get('if-none-match')).toBe('*');
@@ -127,17 +127,17 @@ describe('updateContact', () => {
       updateContact(
         davAccount,
         target,
-        changes({ addPhones: ['+49 170 1234567'] }),
+        changes({ addPhones: [{ value: '+49 170 1234567', type: 'cell' }] }),
       ),
     );
     expect(value).toMatchObject({
       etag: '"v2"',
-      phones: [{ value: '+49 170 1234567' }],
+      phones: [{ value: '+49 170 1234567', type: 'cell' }],
     });
     const [put] = writeRequests(requests);
     expect(put?.method).toBe('PUT');
     expect(put?.headers.get('if-match')).toBe('"v1"');
-    expect(put?.body).toContain('TEL:+49 170 1234567');
+    expect(put?.body).toContain('TEL;TYPE=cell:+49 170 1234567');
   });
 
   const retitled = changes({ title: 'Analyst' });

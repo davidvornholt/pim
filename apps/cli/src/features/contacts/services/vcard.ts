@@ -68,12 +68,21 @@ export const joined = (
 // TYPE values that say how a value is encoded rather than what it is for.
 const technicalTypes = new Set(['internet', 'pref', 'x400', 'voice']);
 
-const typeOf = (property: ICAL.Property): string | undefined => {
+const typesOf = (property: ICAL.Property): ReadonlyArray<string> => {
   const raw: unknown = property.getParameter('type');
-  const types = (Array.isArray(raw) ? raw : [raw])
+  return (Array.isArray(raw) ? raw : [raw])
     .flatMap((type) => (typeof type === 'string' ? type.split(',') : []))
     .map((type) => type.trim().toLowerCase())
-    .filter((type) => type !== '' && !technicalTypes.has(type));
+    .filter((type) => type !== '');
+};
+
+export const technicalTypesOf = (
+  property: ICAL.Property,
+): ReadonlyArray<string> =>
+  typesOf(property).filter((type) => technicalTypes.has(type));
+
+const typeOf = (property: ICAL.Property): string | undefined => {
+  const types = typesOf(property).filter((type) => !technicalTypes.has(type));
   return types.length === 0 ? undefined : types.join(',');
 };
 

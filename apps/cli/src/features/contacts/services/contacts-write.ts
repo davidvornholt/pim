@@ -10,7 +10,7 @@ import {
   type ContactDataError,
   ReadOnlyAddressBookError,
 } from '../errors/errors';
-import type { ContactDetail } from '../schemas/contacts';
+import type { ContactDetail, TypedValue } from '../schemas/contacts';
 import {
   createContactResource,
   deleteContactResource,
@@ -54,8 +54,8 @@ const detailOf = ({
 export type NewContactRequest = ContactText & {
   // An address book name or href from "pim contacts books".
   readonly addressBook: string;
-  readonly emails: ReadonlyArray<string>;
-  readonly phones: ReadonlyArray<string>;
+  readonly emails: ReadonlyArray<TypedValue>;
+  readonly phones: ReadonlyArray<TypedValue>;
 };
 
 export const createContact = (

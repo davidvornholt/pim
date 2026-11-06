@@ -37,8 +37,8 @@ describe('newVCard', () => {
         givenName: 'Ada',
         familyName: 'Lovelace',
         organization: 'Analytical; Engines',
-        emails: ['ada@example.org', 'ADA@example.org'],
-        phones: ['+49 170 1234567'],
+        emails: [{ value: 'ada@example.org' }, { value: 'ADA@example.org' }],
+        phones: [{ value: '+49 170 1234567' }],
       },
       now,
     );
@@ -55,6 +55,27 @@ describe('newVCard', () => {
       'REV:20261028T091500Z',
       'END:VCARD',
     ]);
+  });
+
+  it('writes the types passed with the values', () => {
+    const text = newVCard(
+      {
+        uid: 'u1',
+        name: 'Ada',
+        emails: [
+          { value: 'ada@example.org' },
+          { value: 'ADA@example.org', type: 'work' },
+        ],
+        phones: [{ value: '+49 170 1234567', type: 'cell,home' }],
+      },
+      now,
+    );
+    expect(lines(text)).toEqual(
+      expect.arrayContaining([
+        'EMAIL;TYPE=work:ada@example.org',
+        'TEL;TYPE=cell,home:+49 170 1234567',
+      ]),
+    );
   });
 
   it('prefers the given name to show', () => {
@@ -87,7 +108,10 @@ describe('applyContactChanges', () => {
   it('removes values with their labels and keeps other lines as stored', () => {
     expect(
       changed(appleCard, {
-        addEmails: ['new@example.org', 'OTHER@example.org'],
+        addEmails: [
+          { value: 'new@example.org' },
+          { value: 'OTHER@example.org' },
+        ],
         removeEmails: [
           'ADA@example.org',
           'shared@example.org',
@@ -181,5 +205,140 @@ describe('applyContactChanges', () => {
     ],
   ])('refuses %p', (changes, reason) => {
     expect(changed(appleCard, changes)).toBe(reason);
+  });
+});
+
+describe('applyContactChanges with types', () => {
+  it('sets the type of a value the contact has and drops its label', () => {
+    expect(
+      changed(appleCard, {
+        addEmails: [
+          { value: 'ADA@example.org', type: 'home' },
+          { value: 'shared@example.org', type: 'work' },
+          { value: 'old@example.org', type: 'work' },
+        ],
+        addPhones: [{ value: '+491701234567', type: 'work' }],
+      }),
+    ).toEqual([
+      'BEGIN:VCARD',
+      'VERSION:3.0',
+      'FN:Ada Lovelace',
+      'N:Lovelace;Ada;;;',
+      'EMAIL;TYPE=internet,pref,home:ada@example.org',
+      'item2.EMAIL:other@example.org',
+      'item2.X-ABLabel:home',
+      'EMAIL;TYPE=work:shared@example.org',
+      'item3.TEL:+1 555 0100',
+      'item3.X-ABLabel:office',
+      'EMAIL;TYPE=work:old@example.org',
+      'item4.X-ABLabel:old',
+      'item4.X-Custom:keep',
+      'TEL;TYPE=work:+49 (170) 123-4567',
+      'REV:20261028T091500Z',
+      'END:VCARD',
+    ]);
+  });
+
+  it('keeps a stored value as it is without a type', () => {
+    expect(
+      changed(appleCard, { addPhones: [{ value: '+491701234567' }] }),
+    ).toContain('TEL;type=CELL:+49 (170) 123-4567');
+  });
+
+  it.each([
+    [
+      'VERSION:4.0',
+      'TEL;VALUE=uri;TYPE="voice,cell":tel:+49-170-1234567',
+      'TEL;VALUE=uri;TYPE=voice,work:tel:+49-170-1234567',
+    ],
+    [
+      'VERSION:4.0',
+      'TEL;VALUE=text;TYPE=cell:+49 170 1234567',
+      'TEL;VALUE=text;TYPE=work:+49 170 1234567',
+    ],
+    [
+      'VERSION:3.0',
+      'TEL;VALUE=uri:tel:+49-170-1234567',
+      'TEL;VALUE=uri;TYPE=work:tel:+49-170-1234567',
+    ],
+  ])('keeps the value type of %s %s', (version, line, written) => {
+    const card = ['BEGIN:VCARD', version, 'FN:Ada', line, 'END:VCARD'].join(
+      '\r\n',
+    );
+    expect(
+      changed(card, {
+        addPhones: [{ value: '+491701234567', type: 'work' }],
+      }),
+    ).toContain(written);
+  });
+});
+
+describe('applyContactChanges with the type of a stored line', () => {
+  it.each([
+    [
+      'TEL;VALUE=text;TYPE=home:+123\\;456',
+      { addPhones: [{ value: '+123456', type: 'work' }] },
+      'TEL;VALUE=text;TYPE=work:+123\\;456',
+    ],
+    [
+      'EMAIL;TYPE=HOME;X-FOO=one;X-FOO=two:a@example.org',
+      { addEmails: [{ value: 'a@example.org', type: 'work' }] },
+      'EMAIL;X-FOO=one;X-FOO=two;TYPE=work:a@example.org',
+    ],
+    [
+      'EMAIL;X-FOO="a:b":a@example.org',
+      { addEmails: [{ value: 'a@example.org', type: 'work' }] },
+      'EMAIL;X-FOO="a:b";TYPE=work:a@example.org',
+    ],
+    [
+      'EMAIL;X-FOO="a;type=b";Type=pref;type=CELL:a@example.org',
+      { addEmails: [{ value: 'a@example.org', type: 'work' }] },
+      'EMAIL;X-FOO="a;type=b";TYPE=pref,work:a@example.org',
+    ],
+    [
+      'EMAIL;TY\r\n PE=HOME:a@\r\n\texample.org',
+      { addEmails: [{ value: 'a@example.org', type: 'work' }] },
+      'EMAIL;TYPE=work:a@example.org',
+    ],
+    [
+      'email;x-foo=^n:a@example.org',
+      {
+        addEmails: [
+          { value: 'a@example.org', type: 'home' },
+          { value: 'A@example.org', type: 'work' },
+        ],
+      },
+      'email;x-foo=^n;TYPE=work:a@example.org',
+    ],
+    // ical.js reads a stray quote that a quote-aware split cannot place, so it
+    // writes such a line, with the quote encoded as RFC 6868 says.
+    [
+      'EMAIL;X-FOO=a"b;TYPE=home:a@example.org',
+      { addEmails: [{ value: 'a@example.org', type: 'work' }] },
+      "EMAIL;X-FOO=a^'b;TYPE=work:a@example.org",
+    ],
+  ])('changes only the type parameters of %s', (line, changes, written) => {
+    expect(changed(cardOf('FN:Ada', line), changes)).toEqual([
+      'BEGIN:VCARD',
+      'VERSION:3.0',
+      'FN:Ada',
+      written,
+      'REV:20261028T091500Z',
+      'END:VCARD',
+    ]);
+  });
+
+  it('folds a stored line again after changing its type', () => {
+    const parameter = `X-FOO=${'x'.repeat(70)}`;
+    expect(
+      changed(cardOf('FN:Ada', `EMAIL;${parameter}:a@example.org`), {
+        addEmails: [{ value: 'a@example.org', type: 'work' }],
+      }),
+    ).toEqual(
+      expect.arrayContaining([
+        `EMAIL;${parameter.slice(0, 69)}`,
+        ` ${parameter.slice(69)};TYPE=work:a@example.org`,
+      ]),
+    );
   });
 });
