@@ -38,7 +38,7 @@ For mail, pim uses Mozilla Thunderbird's public app ID, so Microsoft's consent s
 
 ### Outlook calendars
 
-A `graph` table, such as `graph = {}`, gives an account its Outlook calendars through Microsoft Graph, including calendars others shared with the user. To leave out calendars such as the built-in one that Outlook does not let the user remove, name them in the table, ignoring case: `graph = { hidden-calendars = ["Birthdays"] }`.
+A `graph` table, such as `graph = {}`, gives an account its Outlook calendars through Microsoft Graph, including calendars others shared with the user.
 
 For Outlook calendars, pim uses its own app ID and asks for read and write access to the user's calendars and those shared with them. `pim login` shows a link for it instead of a code. Open the link in a browser on the same computer, because Microsoft returns the sign-in to pim through a local address. Work or school tenants that do not let users consent to apps from unverified publishers need an administrator to consent to pim once. Alternatively, register an app in the tenant and set its application ID as `client-id` in the account's `graph` table. pim signs in through Microsoft's `common` endpoint, so the app must support accounts in any organizational directory, plus personal Microsoft accounts for Outlook.com; it must also have the mobile and desktop redirect URI `http://localhost` and the delegated Microsoft Graph permissions `Calendars.ReadWrite` and `Calendars.ReadWrite.Shared`.
 

@@ -48,8 +48,6 @@ const DavEntry = Schema.Struct({
 
 // Outlook calendars through Microsoft Graph. client-id replaces pim's own app
 // registration, as for a tenant that allows only apps it registered.
-// hidden-calendars names calendars that pim leaves out, because Outlook has
-// built-in calendars that the user cannot remove.
 const GraphEntry = Schema.Struct({
   clientId: Schema.optionalKey(NonEmptyTrimmedString),
   hiddenCalendars: Schema.Array(NonEmptyTrimmedString).pipe(

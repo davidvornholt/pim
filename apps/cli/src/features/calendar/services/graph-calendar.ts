@@ -64,8 +64,7 @@ const isHidden = (
 ): boolean =>
   hiddenCalendars.some((hidden) => hidden.toLowerCase() === name.toLowerCase());
 
-// Includes the calendars shared with the user that they added in Outlook, and
-// leaves out those the account hides, whatever their case.
+// Includes the calendars shared with the user that they added in Outlook.
 export const outlookCalendars = (
   client: GraphClient,
   settings: GraphSettings,
