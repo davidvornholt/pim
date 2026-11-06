@@ -11,7 +11,10 @@ import {
   type GraphSessionError,
   graphSettings,
 } from '../../../shared/graph/graph';
-import type { CalendarDataError } from '../errors/errors';
+import {
+  type CalendarDataError,
+  CalendarNotFoundError,
+} from '../errors/errors';
 import type { Calendar, EventDetail } from '../schemas/calendar';
 import { floatingMs } from './caldav';
 import {
@@ -55,14 +58,19 @@ const seriesFields =
   'id,subject,start,end,isAllDay,isCancelled,location,attendees,type,originalStart,recurrence,cancelledOccurrences';
 const pageSize = 100;
 
+const isHidden = (
+  { hiddenCalendars }: GraphSettings,
+  { name }: Calendar,
+): boolean =>
+  hiddenCalendars.some((hidden) => hidden.toLowerCase() === name.toLowerCase());
+
 // Includes the calendars shared with the user that they added in Outlook, and
 // leaves out those the account hides, whatever their case.
 export const outlookCalendars = (
   client: GraphClient,
-  { hiddenCalendars }: GraphSettings,
-): Effect.Effect<ReadonlyArray<GraphCalendar>, GraphRequestError> => {
-  const hidden = new Set(hiddenCalendars.map((name) => name.toLowerCase()));
-  return client.list(`/me/calendars?$select=${calendarFields}`).pipe(
+  settings: GraphSettings,
+): Effect.Effect<ReadonlyArray<GraphCalendar>, GraphRequestError> =>
+  client.list(`/me/calendars?$select=${calendarFields}`).pipe(
     Effect.flatMap((items) =>
       Schema.decodeUnknownEffect(Schema.Array(GraphCalendar))(items).pipe(
         Effect.mapError(
@@ -76,13 +84,10 @@ export const outlookCalendars = (
     Effect.map((calendars) =>
       calendars.filter(
         (calendar) =>
-          !hidden.has(
-            graphCalendar(client.account, calendar).name.toLowerCase(),
-          ),
+          !isHidden(settings, graphCalendar(client.account, calendar)),
       ),
     ),
   );
-};
 
 export const graphCalendars = (
   client: GraphClient,
@@ -184,6 +189,38 @@ export const graphSource = (
 
 export const eventPath = (id: string) => `/me/events/${encodeURIComponent(id)}`;
 
+// Refuses an event in a calendar the account hides. When Microsoft Graph finds
+// no calendar, asking for the event itself reports a missing event as on any
+// other account, and an event that exists still fails, because pim cannot tell
+// whether its calendar is hidden.
+export const refuseHiddenEvent = (
+  client: GraphClient,
+  settings: GraphSettings,
+  id: string,
+): Effect.Effect<void, GraphRequestError | CalendarNotFoundError> =>
+  settings.hiddenCalendars.length === 0
+    ? Effect.void
+    : client
+        .get(`${eventPath(id)}/calendar?$select=id,name`, GraphCalendar)
+        .pipe(
+          Effect.catchTag('GraphNotFoundError', (lookup) =>
+            client
+              .get(`${eventPath(id)}?$select=id`, Schema.Unknown)
+              .pipe(Effect.flatMap(() => Effect.fail(lookup))),
+          ),
+          Effect.flatMap((found) => {
+            const calendar = graphCalendar(client.account, found);
+            return isHidden(settings, calendar)
+              ? Effect.fail(
+                  new CalendarNotFoundError({
+                    calendar: calendar.name,
+                    message: `The event ${id} is in the Outlook calendar "${calendar.name}", which ${client.account} hides with hidden-calendars in its account config, so pim does not read or change it`,
+                  }),
+                )
+              : Effect.void;
+          }),
+        );
+
 // The series master with id, with its changed occurrences.
 export const readGraphSeries = (
   client: GraphClient,
@@ -236,12 +273,16 @@ export const graphEvent = (
   local: DateTime.TimeZone,
 ): Effect.Effect<
   EventDetail,
-  GraphSessionError | GraphRequestError | CalendarDataError,
+  | GraphSessionError
+  | GraphRequestError
+  | CalendarDataError
+  | CalendarNotFoundError,
   Graph
 > =>
   Effect.gen(function* () {
     const graph = yield* Graph;
     const client = yield* graph.client(account);
+    yield* refuseHiddenEvent(client, yield* graphSettings(account), id);
     return yield* graphDetailOf(
       client,
       yield* readGraphEvent(client, id),

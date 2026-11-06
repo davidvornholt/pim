@@ -18,7 +18,11 @@ import {
 import { foundOrFail } from './calendar';
 import { isCalDavHref } from './calendar-source';
 import type { EventChanges } from './event-write';
-import { findGraphCalendar, outlookCalendars } from './graph-calendar';
+import {
+  findGraphCalendar,
+  outlookCalendars,
+  refuseHiddenEvent,
+} from './graph-calendar';
 import { graphCalendar } from './graph-events';
 import {
   createOutlookEvent,
@@ -110,8 +114,8 @@ export const createEvent = (
       : yield* createCalDavEvent(account, calDavRequest, local);
   });
 
-// The client for an Outlook event: its href is a Microsoft Graph id, which
-// has no slash.
+// The client for an Outlook event in a calendar the account does not hide:
+// its href is a Microsoft Graph id, which has no slash.
 const outlookClient = (account: Account, href: string) =>
   Effect.gen(function* () {
     if (
@@ -121,7 +125,9 @@ const outlookClient = (account: Account, href: string) =>
       return;
     }
     const graph = yield* Graph;
-    return yield* graph.client(account);
+    const client = yield* graph.client(account);
+    yield* refuseHiddenEvent(client, account.graph, href);
+    return client;
   });
 
 export const updateEvent = (

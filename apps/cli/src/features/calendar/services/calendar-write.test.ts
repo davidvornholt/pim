@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import type { Effect } from 'effect';
+import { Effect } from 'effect';
 import type { Account } from '../../../shared/accounts/account';
 import type { Dav } from '../../../shared/dav/dav';
 import {
@@ -12,6 +12,7 @@ import {
 } from '../../../shared/dav/dav-server.fixture';
 import type { Graph } from '../../../shared/graph/graph';
 import {
+  GraphReply,
   graphAccount,
   onFakeGraph,
 } from '../../../shared/graph/graph-server.fixture';
@@ -23,10 +24,12 @@ import {
   target,
 } from './caldav-write.fixture';
 import { createEvent, deleteEvent, updateEvent } from './calendar-write';
+import { graphEvent } from './graph-calendar';
 import { berlin, icsOf } from './ical.fixture';
 import { received } from './invitation.fixture';
 import { importInvitation } from './invitation-import';
 import { answerInvitation } from './invitation-reply';
+import { answerOutlookMeeting } from './outlook-answer';
 
 // An account with calendars on a CalDAV server and in Outlook.
 const both: Account = { ...davAccount, graph: graphAccount.graph };
@@ -206,6 +209,133 @@ describe('updateEvent and deleteEvent', () => {
       dav.effect,
     );
     expect(writeRequests(davRun.requests).map(({ method }) => method)).toEqual([
+      'DELETE',
+    ]);
+    expect(dav.requests).toEqual([]);
+  });
+});
+
+const hiding: Account = {
+  ...graphAccount,
+  graph: { clientId: 'app', hiddenCalendars: ['birthdays'] },
+};
+
+const calendarLookup =
+  'https://graph.microsoft.com/v1.0/me/events/event-1/calendar?$select=id,name';
+
+const hidingTarget = target({ href: 'event-1', etag: 'W/"1"' });
+
+// Each operation by name, with whether the user organizes the event: pim
+// answers only a meeting someone else organizes.
+const operations: ReadonlyArray<
+  readonly [string, boolean, Effect.Effect<unknown, unknown, Dav | Graph>]
+> = [
+  ['get', true, graphEvent(hiding, 'event-1', berlin)],
+  [
+    'update',
+    true,
+    updateEvent(
+      hiding,
+      hidingTarget,
+      { title: 'Planning, final', zone: berlin, teams: false },
+      berlin,
+    ),
+  ],
+  ['delete', true, deleteEvent(hiding, hidingTarget, berlin)],
+  [
+    'respond',
+    false,
+    answerOutlookMeeting(
+      hiding,
+      {
+        href: 'event-1',
+        partstat: 'accepted',
+        series: false,
+        notifyOrganizer: false,
+      },
+      berlin,
+    ),
+  ],
+];
+
+describe('an Outlook event on an account that hides calendars', () => {
+  const run = async (
+    calendar: string,
+    organizes: boolean,
+    operation: Effect.Effect<unknown, unknown, Dav | Graph>,
+  ) => {
+    const { effect, requests } = onFakeGraph(
+      {
+        ...graphRoutes(),
+        '/me/events/event-1': { ...outlookEvent, isOrganizer: organizes },
+        '/me/events/event-1/calendar': { id: 'cal-2', name: calendar },
+        'DELETE /me/events/event-1': new GraphReply(204),
+        'POST /me/events/event-1/accept': new GraphReply(202),
+      },
+      operation,
+    );
+    const { value: outcome } = await succeedsOnFakeDav(
+      {},
+      Effect.result(effect),
+    );
+    return { outcome, requests };
+  };
+
+  it.each(operations)(
+    '%s is refused after asking only for its calendar',
+    async (_name, organizes, operation) => {
+      expect(await run('Birthdays', organizes, operation)).toMatchObject({
+        outcome: {
+          failure: {
+            _tag: 'CalendarNotFoundError',
+            calendar: 'Birthdays',
+            message:
+              'The event event-1 is in the Outlook calendar "Birthdays", which me@example.com hides with hidden-calendars in its account config, so pim does not read or change it',
+          },
+        },
+        requests: [{ url: calendarLookup }],
+      });
+    },
+  );
+
+  it.each(operations)(
+    '%s goes ahead in a calendar the account shows',
+    async (_name, organizes, operation) => {
+      const { outcome, requests } = await run('Calendar', organizes, operation);
+      expect(outcome).toMatchObject({ _tag: 'Success' });
+      expect(requests[0]?.url).toBe(calendarLookup);
+    },
+  );
+
+  it('neither reads nor changes an event whose calendar Microsoft Graph does not name', async () => {
+    const { effect, requests } = onFakeGraph(
+      {
+        '/me/events/event-1': outlookEvent,
+        'DELETE /me/events/event-1': new GraphReply(204),
+      },
+      deleteEvent(hiding, hidingTarget, berlin),
+    );
+    const { error } = await failsOnFakeDav({}, effect);
+    expect(error).toMatchObject({
+      _tag: 'GraphNotFoundError',
+      path: '/me/events/event-1/calendar',
+    });
+    expect(requests.map(({ url }) => url)).toEqual([
+      calendarLookup,
+      'https://graph.microsoft.com/v1.0/me/events/event-1?$select=id',
+    ]);
+  });
+
+  it('leaves a CalDAV href to the CalDAV server', async () => {
+    const dav = onFakeGraph(
+      {},
+      deleteEvent({ ...both, graph: hiding.graph }, target(), berlin),
+    );
+    const { requests } = await succeedsOnFakeDav(
+      eventRoutes(icsOf(...single)),
+      dav.effect,
+    );
+    expect(writeRequests(requests).map(({ method }) => method)).toEqual([
       'DELETE',
     ]);
     expect(dav.requests).toEqual([]);
