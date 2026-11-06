@@ -1,6 +1,7 @@
 import { Result } from 'effect';
 import ICAL from 'ical.js';
-import { clean, firstText, joined, parts } from './vcard';
+import type { TypedValue } from '../schemas/contacts';
+import { clean, firstText, joined, parts, technicalTypesOf } from './vcard';
 
 const productId = '-//pim//EN';
 // New contacts are vCard 3.0, which every CardDAV server and client reads.
@@ -19,20 +20,22 @@ export type ContactText = {
 
 export type NewContact = ContactText & {
   readonly uid: string;
-  readonly emails: ReadonlyArray<string>;
-  readonly phones: ReadonlyArray<string>;
+  readonly emails: ReadonlyArray<TypedValue>;
+  readonly phones: ReadonlyArray<TypedValue>;
 };
 
 export type ContactChanges = ContactText & {
-  readonly addEmails: ReadonlyArray<string>;
+  readonly addEmails: ReadonlyArray<TypedValue>;
   readonly removeEmails: ReadonlyArray<string>;
-  readonly addPhones: ReadonlyArray<string>;
+  readonly addPhones: ReadonlyArray<TypedValue>;
   readonly removePhones: ReadonlyArray<string>;
 };
 
 const fractionalSeconds = /\.\d+Z$/u;
 const mailtoScheme = /^mailto:/iu;
 const nonDigits = /\D/gu;
+const telScheme = /^tel:/iu;
+const valueParameter = /;VALUE=/iu;
 
 const timestamp = (ms: number): string =>
   new Date(ms).toISOString().replace(fractionalSeconds, 'Z');
@@ -99,20 +102,16 @@ const groupOf = (property: ICAL.Property): string | undefined => {
   return typeof group === 'string' ? group.toLowerCase() : undefined;
 };
 
-// Removes the property, and the labels Apple keeps in its group, such as
-// item1.X-ABLabel for item1.EMAIL, once the group holds nothing else.
-const removeWithLabels = (
-  card: ICAL.Component,
-  property: ICAL.Property,
-): void => {
+// Removes the labels Apple keeps in the group of the property, such as
+// item1.X-ABLabel for item1.EMAIL, unless the group holds something else.
+const removeLabels = (card: ICAL.Component, property: ICAL.Property): void => {
   const group = groupOf(property);
-  card.removeProperty(property);
   if (group === undefined) {
     return;
   }
   const rest = card
     .getAllProperties()
-    .filter((other) => groupOf(other) === group);
+    .filter((other) => other !== property && groupOf(other) === group);
   if (rest.every((other) => other.name === 'x-ablabel')) {
     for (const label of rest) {
       card.removeProperty(label);
@@ -139,25 +138,53 @@ const removeValues = (
   const keys = new Set(values.map(key));
   for (const property of properties) {
     if (keys.has(key(textValue(property)))) {
-      removeWithLabels(card, property);
+      removeLabels(card, property);
+      card.removeProperty(property);
     }
   }
   return Result.void;
 };
 
-// Adds the values the contact does not have yet.
+// Gives the property the type. TYPE values such as pref stay, because they say
+// nothing about what the value is for. Apple shows a label over the type, so
+// the property leaves its labeled group. ical.js takes uri as the default of a
+// vCard 4 phone number and would drop VALUE=uri from the line it writes.
+const setType = (
+  card: ICAL.Component,
+  property: ICAL.Property,
+  type: string,
+): void => {
+  property.setParameter('type', [
+    ...new Set([...technicalTypesOf(property), ...type.split(',')]),
+  ]);
+  removeLabels(card, property);
+  property.removeParameter('group');
+  if (
+    telScheme.test(textValue(property)) &&
+    !valueParameter.test(property.toICALString())
+  ) {
+    property.setParameter('value', 'uri');
+  }
+};
+
+// Adds the values the contact does not have yet, and sets the type passed with
+// a value on the properties that hold it.
 const addValues = (
   card: ICAL.Component,
   name: string,
-  values: ReadonlyArray<string>,
+  values: ReadonlyArray<TypedValue>,
   key: (value: string) => string,
 ): void => {
-  for (const value of values) {
-    const present = card
+  for (const { value, type } of values) {
+    const stored = card
       .getAllProperties(name)
-      .some((property) => key(textValue(property)) === key(value));
-    if (!present) {
-      card.addPropertyWithValue(name, value);
+      .filter((property) => key(textValue(property)) === key(value));
+    const properties =
+      stored.length > 0 ? stored : [card.addPropertyWithValue(name, value)];
+    if (type !== undefined) {
+      for (const property of properties) {
+        setType(card, property, type);
+      }
     }
   }
 };
