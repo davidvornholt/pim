@@ -66,10 +66,12 @@ const outlookCalendar = (account: Account, wanted: string) =>
     }
     const graph = yield* Graph;
     const client = yield* graph.client(account);
-    const calendars = (yield* outlookCalendars(client)).map((source) => ({
-      ...graphCalendar(account.email, source),
-      source,
-    }));
+    const calendars = (yield* outlookCalendars(client, account.graph)).map(
+      (source) => ({
+        ...graphCalendar(account.email, source),
+        source,
+      }),
+    );
     let match = findGraphCalendar(calendars, wanted);
     const byId = calendars.some(({ href }) => href === wanted);
     if (account.dav !== undefined && !byId) {

@@ -35,7 +35,7 @@ export type GraphRoute = unknown;
 export const graphAccount: Account = {
   email: 'me@example.com',
   name: 'Me',
-  graph: { clientId: pimClientId },
+  graph: { clientId: pimClientId, hiddenCalendars: [] },
 };
 
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>

@@ -22,3 +22,5 @@ mail = { host = "outlook.office365.com", auth = "microsoft" }
 graph = {}
 # A tenant that allows only apps it registered sets its own app instead:
 # graph = { client-id = "00000000-0000-0000-0000-000000000000" }
+# Calendars pim should leave out, by name in any case:
+# graph = { hidden-calendars = ["Birthdays"] }

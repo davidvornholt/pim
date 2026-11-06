@@ -13,7 +13,7 @@ import { checkGraphAccounts, graphStatusFromError } from './status';
 const account: Account = {
   email: 'me@example.com',
   name: 'Me',
-  graph: { clientId: pimClientId },
+  graph: { clientId: pimClientId, hiddenCalendars: [] },
 };
 
 // A keyring, Microsoft sign-in and Microsoft Graph that record their use.
@@ -95,7 +95,10 @@ describe('Graph', () => {
     await graph.provide(
       clientFor({
         ...account,
-        graph: { clientId: '00000000-0000-4000-8000-000000000002' },
+        graph: {
+          clientId: '00000000-0000-4000-8000-000000000002',
+          hiddenCalendars: [],
+        },
       }),
     );
 

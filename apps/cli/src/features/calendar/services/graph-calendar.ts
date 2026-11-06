@@ -1,12 +1,16 @@
 import { type DateTime, Effect, Result, Schema } from 'effect';
-import type { Account } from '../../../shared/accounts/account';
+import type { Account, GraphSettings } from '../../../shared/accounts/account';
 import { onlyOne } from '../../../shared/dav/collections';
 import {
   GraphError,
   type GraphRequestError,
 } from '../../../shared/errors/graph';
 import type { GraphClient } from '../../../shared/graph/client';
-import { Graph, type GraphSessionError } from '../../../shared/graph/graph';
+import {
+  Graph,
+  type GraphSessionError,
+  graphSettings,
+} from '../../../shared/graph/graph';
 import type { CalendarDataError } from '../errors/errors';
 import type { Calendar, EventDetail } from '../schemas/calendar';
 import { floatingMs } from './caldav';
@@ -51,11 +55,14 @@ const seriesFields =
   'id,subject,start,end,isAllDay,isCancelled,location,attendees,type,originalStart,recurrence,cancelledOccurrences';
 const pageSize = 100;
 
-// Includes the calendars shared with the user that they added in Outlook.
+// Includes the calendars shared with the user that they added in Outlook, and
+// leaves out those the account hides, whatever their case.
 export const outlookCalendars = (
   client: GraphClient,
-): Effect.Effect<ReadonlyArray<GraphCalendar>, GraphRequestError> =>
-  client.list(`/me/calendars?$select=${calendarFields}`).pipe(
+  { hiddenCalendars }: GraphSettings,
+): Effect.Effect<ReadonlyArray<GraphCalendar>, GraphRequestError> => {
+  const hidden = new Set(hiddenCalendars.map((name) => name.toLowerCase()));
+  return client.list(`/me/calendars?$select=${calendarFields}`).pipe(
     Effect.flatMap((items) =>
       Schema.decodeUnknownEffect(Schema.Array(GraphCalendar))(items).pipe(
         Effect.mapError(
@@ -66,12 +73,22 @@ export const outlookCalendars = (
         ),
       ),
     ),
+    Effect.map((calendars) =>
+      calendars.filter(
+        (calendar) =>
+          !hidden.has(
+            graphCalendar(client.account, calendar).name.toLowerCase(),
+          ),
+      ),
+    ),
   );
+};
 
 export const graphCalendars = (
   client: GraphClient,
+  settings: GraphSettings,
 ): Effect.Effect<ReadonlyArray<Calendar>, GraphRequestError> =>
-  outlookCalendars(client).pipe(
+  outlookCalendars(client, settings).pipe(
     Effect.map((calendars) =>
       calendars.map((calendar) => graphCalendar(client.account, calendar)),
     ),
@@ -154,7 +171,10 @@ export const graphSource = (
   Effect.gen(function* () {
     const graph = yield* Graph;
     const client = yield* graph.client(account);
-    const calendars = yield* graphCalendars(client);
+    const calendars = yield* graphCalendars(
+      client,
+      yield* graphSettings(account),
+    );
     return {
       calendars,
       find: (wanted) => findGraphCalendar(calendars, wanted),

@@ -48,9 +48,19 @@ const DavEntry = Schema.Struct({
 
 // Outlook calendars through Microsoft Graph. client-id replaces pim's own app
 // registration, as for a tenant that allows only apps it registered.
+// hidden-calendars names calendars that pim leaves out, because Outlook has
+// built-in calendars that the user cannot remove.
 const GraphEntry = Schema.Struct({
   clientId: Schema.optionalKey(NonEmptyTrimmedString),
-}).pipe(Schema.encodeKeys({ clientId: 'client-id' }));
+  hiddenCalendars: Schema.Array(NonEmptyTrimmedString).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed([])),
+  ),
+}).pipe(
+  Schema.encodeKeys({
+    clientId: 'client-id',
+    hiddenCalendars: 'hidden-calendars',
+  }),
+);
 
 const AccountEntry = Schema.Struct({
   name: NonEmptyTrimmedString,
@@ -117,6 +127,7 @@ export type DavSettings = {
 
 export type GraphSettings = {
   readonly clientId: string;
+  readonly hiddenCalendars: ReadonlyArray<string>;
 };
 
 export type Account = {
@@ -171,7 +182,12 @@ export const decodeAccounts = (
             : { dav: { url: dav.url, user: dav.user ?? user } }),
           ...(graph === undefined
             ? {}
-            : { graph: { clientId: graph.clientId ?? pimClientId } }),
+            : {
+                graph: {
+                  clientId: graph.clientId ?? pimClientId,
+                  hiddenCalendars: graph.hiddenCalendars,
+                },
+              }),
         };
       }),
     ),
