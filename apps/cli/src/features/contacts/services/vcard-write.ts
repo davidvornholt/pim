@@ -180,9 +180,11 @@ const withTypes = (
   );
 };
 
-// Gives the property the type. TYPE values such as pref stay, because they say
-// nothing about what the value is for. Apple shows a label over the type, so
-// the property leaves its labeled group.
+// TYPE values such as pref stay, because they say nothing about what the value
+// is for. The property leaves its labeled group, because Apple shows a label
+// over the type. The stored text is patched because ical.js would also change
+// the rest of the line: it adds a backslash to a value such as +123\;456 and
+// keeps only the last of a repeated parameter.
 const setType = (
   { card, stored }: EditedCard,
   property: ICAL.Property,
@@ -201,8 +203,6 @@ const setType = (
   }
 };
 
-// Adds the values the contact does not have yet, and sets the type passed with
-// a value on the properties that hold it.
 const addValues = (
   edited: EditedCard,
   name: string,

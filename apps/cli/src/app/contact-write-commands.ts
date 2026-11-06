@@ -44,8 +44,7 @@ const checked = (
       );
 };
 
-// What a value is for, before a colon, as "pim contacts get" prints it. mailto:
-// and tel: are schemes rather than types.
+// mailto: and tel: are schemes rather than types.
 const typePrefix =
   /^(?!(?:mailto|tel):)(?<type>[a-z][a-z\d-]*(?:,[a-z][a-z\d-]*)*):(?<value>.*)$/iu;
 
@@ -56,8 +55,6 @@ export const typedValue = (given: string): TypedValue => {
     : { value: value.trim(), type: type.toLowerCase() };
 };
 
-// The values with their types, provided each looks like the kind of value the
-// option takes.
 const checkedTyped = (
   command: string,
   option: string,
