@@ -22,3 +22,5 @@ mail = { host = "outlook.office365.com", auth = "microsoft" }
 graph = {}
 # A tenant that allows only apps it registered sets its own app instead:
 # graph = { client-id = "00000000-0000-0000-0000-000000000000" }
+# Calendars pim should leave out by name, in any case, such as those built into Outlook that the user can't remove. An event href you already have still works, because Microsoft Graph doesn't reliably say which calendar an event is in:
+# graph = { hidden-calendars = ["Birthdays"] }

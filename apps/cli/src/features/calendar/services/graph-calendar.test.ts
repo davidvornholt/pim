@@ -37,6 +37,8 @@ const calendar: Calendar = {
 // The week of 2026-11-03 to 2026-11-09 in Berlin.
 const week = windowOf('2026-11-02T23:00:00Z', '2026-11-09T23:00:00Z');
 
+const settings = { clientId: 'app', hiddenCalendars: [] };
+
 const result = <A, E>(effect: Effect.Effect<A, E>) =>
   Effect.runPromise(Effect.result(effect));
 
@@ -50,7 +52,7 @@ describe('graphCalendars', () => {
         ],
       },
     });
-    expect(await result(graphCalendars(client))).toEqual(
+    expect(await result(graphCalendars(client, settings))).toEqual(
       Result.succeed([
         {
           account: 'me@example.com',
@@ -72,11 +74,36 @@ describe('graphCalendars', () => {
     ]);
   });
 
+  it('leaves out the calendars the account hides, whatever their case', async () => {
+    const { client } = fakeGraph({
+      '/me/calendars': {
+        value: [
+          { id: 'cal-1', name: 'Calendar', hexColor: '', canEdit: true },
+          { id: 'cal-2', name: 'Birthdays', hexColor: '', canEdit: false },
+        ],
+      },
+    });
+    expect(
+      await result(
+        graphCalendars(client, { ...settings, hiddenCalendars: ['birthdays'] }),
+      ),
+    ).toEqual(
+      Result.succeed([
+        {
+          account: 'me@example.com',
+          href: 'cal-1',
+          name: 'Calendar',
+          writable: true,
+        },
+      ]),
+    );
+  });
+
   it('reports calendars in an unexpected form', async () => {
     const { client } = fakeGraph({
       '/me/calendars': { value: [{ name: 'x' }] },
     });
-    expect(await result(graphCalendars(client))).toMatchObject({
+    expect(await result(graphCalendars(client, settings))).toMatchObject({
       failure: {
         _tag: 'GraphError',
         message:

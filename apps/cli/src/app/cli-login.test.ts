@@ -37,7 +37,7 @@ const davAccount: Account = {
 
 const graphAccount: Account = {
   ...accountFor('me@example.com', 'password'),
-  graph: { clientId: pimClientId },
+  graph: { clientId: pimClientId, hiddenCalendars: [] },
 };
 
 const principalReply = `<?xml version="1.0"?>
@@ -247,7 +247,10 @@ describe('loginAccounts for Outlook calendars', () => {
       [
         {
           ...accountFor('me@example.com', 'microsoft'),
-          graph: { clientId: '00000000-0000-4000-8000-000000000003' },
+          graph: {
+            clientId: '00000000-0000-4000-8000-000000000003',
+            hiddenCalendars: [],
+          },
         },
       ],
       { answer: Effect.never, signIn },

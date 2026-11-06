@@ -50,7 +50,15 @@ const DavEntry = Schema.Struct({
 // registration, as for a tenant that allows only apps it registered.
 const GraphEntry = Schema.Struct({
   clientId: Schema.optionalKey(NonEmptyTrimmedString),
-}).pipe(Schema.encodeKeys({ clientId: 'client-id' }));
+  hiddenCalendars: Schema.Array(NonEmptyTrimmedString).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed([])),
+  ),
+}).pipe(
+  Schema.encodeKeys({
+    clientId: 'client-id',
+    hiddenCalendars: 'hidden-calendars',
+  }),
+);
 
 const AccountEntry = Schema.Struct({
   name: NonEmptyTrimmedString,
@@ -117,6 +125,7 @@ export type DavSettings = {
 
 export type GraphSettings = {
   readonly clientId: string;
+  readonly hiddenCalendars: ReadonlyArray<string>;
 };
 
 export type Account = {
@@ -171,7 +180,12 @@ export const decodeAccounts = (
             : { dav: { url: dav.url, user: dav.user ?? user } }),
           ...(graph === undefined
             ? {}
-            : { graph: { clientId: graph.clientId ?? pimClientId } }),
+            : {
+                graph: {
+                  clientId: graph.clientId ?? pimClientId,
+                  hiddenCalendars: graph.hiddenCalendars,
+                },
+              }),
         };
       }),
     ),

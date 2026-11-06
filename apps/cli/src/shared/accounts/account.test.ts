@@ -80,6 +80,11 @@ const rejections: ReadonlyArray<
     { 'a@b.com': { name: 'A', graph: { 'client-id': '' } } },
     'client-id',
   ],
+  [
+    'an empty name among the hidden calendars',
+    { 'a@b.com': { name: 'A', graph: { 'hidden-calendars': [''] } } },
+    'hidden-calendars',
+  ],
 ];
 
 describe('decodeAccounts', () => {
@@ -146,14 +151,27 @@ describe('decodeAccounts', () => {
     expect(account).toEqual({
       email: 'a@b.com',
       name: 'A',
-      graph: { clientId: '161e31aa-5a5e-4f0f-a4c5-9660cf121f18' },
+      graph: {
+        clientId: '161e31aa-5a5e-4f0f-a4c5-9660cf121f18',
+        hiddenCalendars: [],
+      },
     });
     expect(own?.graph).toEqual({
       clientId: '00000000-0000-4000-8000-000000000002',
+      hiddenCalendars: [],
     });
     const [plain] = decoded({ accounts: { 'a@b.com': mailOnly } });
     expect(plain).not.toHaveProperty('graph');
     expect(plain).not.toHaveProperty('dav');
+  });
+
+  it('keeps the calendars that hidden-calendars names', () => {
+    const [account] = decoded({
+      accounts: {
+        'a@b.com': { name: 'A', graph: { 'hidden-calendars': ['Birthdays'] } },
+      },
+    });
+    expect(account?.graph?.hiddenCalendars).toEqual(['Birthdays']);
   });
 
   it.each(rejections)('rejects %s and says why', (_case, accounts, reason) => {
