@@ -3,19 +3,10 @@ import type { Account } from '../../../shared/accounts/account';
 import type { GraphRequestError } from '../../../shared/errors/graph';
 import type { GraphClient } from '../../../shared/graph/client';
 import { Graph, type GraphSessionError } from '../../../shared/graph/graph';
-import {
-  type CalendarDataError,
-  type CalendarNotFoundError,
-  InvitationError,
-} from '../errors/errors';
+import { type CalendarDataError, InvitationError } from '../errors/errors';
 import type { EventDetail } from '../schemas/calendar';
 import { isCalDavHref } from './calendar-source';
-import {
-  eventPath,
-  graphDetailOf,
-  readGraphEvent,
-  refuseHiddenEvent,
-} from './graph-calendar';
+import { eventPath, graphDetailOf, readGraphEvent } from './graph-calendar';
 import type { GraphEvent } from './graph-events';
 import type { Partstat } from './invitation';
 
@@ -90,11 +81,7 @@ export const answerOutlookMeeting = (
   local: DateTime.TimeZone,
 ): Effect.Effect<
   OutlookAnswered,
-  | GraphSessionError
-  | GraphRequestError
-  | CalendarDataError
-  | CalendarNotFoundError
-  | InvitationError,
+  GraphSessionError | GraphRequestError | CalendarDataError | InvitationError,
   Graph
 > =>
   Effect.gen(function* () {
@@ -108,7 +95,6 @@ export const answerOutlookMeeting = (
     }
     const graph = yield* Graph;
     const client = yield* graph.client(account);
-    yield* refuseHiddenEvent(client, account.graph, answer.href);
     return yield* answerOutlookEvent(client, answer, local);
   });
 

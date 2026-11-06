@@ -331,20 +331,4 @@ describe('graphEvent', () => {
       failure: { _tag: 'GraphNotFoundError', path: '/me/events/gone' },
     });
   });
-
-  it('reports a missing event the same way on an account that hides calendars', async () => {
-    const hiding = {
-      ...graphAccount,
-      graph: { ...settings, hiddenCalendars: ['Birthdays'] },
-    };
-    const { effect } = onFakeGraph({}, graphEvent(hiding, 'gone', berlin));
-    expect(await result(effect)).toMatchObject({
-      failure: {
-        _tag: 'GraphNotFoundError',
-        path: '/me/events/gone',
-        message:
-          'Microsoft Graph found nothing at /me/events/gone for me@example.com (HTTP 404: ErrorItemNotFound: Not found.)',
-      },
-    });
-  });
 });

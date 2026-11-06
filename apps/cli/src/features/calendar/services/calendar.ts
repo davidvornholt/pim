@@ -310,7 +310,7 @@ export const accountEvent = (
   local: DateTime.TimeZone,
 ): Effect.Effect<
   EventDetail & { readonly ics?: string },
-  CalendarReadError | CalendarDataError | CalendarNotFoundError,
+  CalendarReadError | CalendarDataError,
   Dav | Graph
 > => {
   if (
