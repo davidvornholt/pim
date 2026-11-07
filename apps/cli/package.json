@@ -12,7 +12,7 @@
   "dependencies": {
     "@napi-rs/keyring": "^2.1.2",
     "@xmldom/xmldom": "^0.9.12",
-    "effect": "^4.1.0",
+    "effect": "^4.1.2",
     "html-to-text": "^10.0.1",
     "ical.js": "^2.2.1",
     "imapflow": "^2.10.0",
