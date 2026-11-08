@@ -35,6 +35,26 @@ const replySource = Buffer.from(
   ].join('\r\n'),
 );
 
+it('fails instead of reporting a saved draft when imapflow reports that nothing was appended', async () => {
+  const client = {
+    list: () => Promise.resolve(folders),
+    append: () => Promise.resolve(false),
+  } as unknown as ImapFlow;
+
+  const error = await Effect.runPromise(
+    Effect.flip(
+      writeDraft(client, account, {
+        account: account.email,
+        to: 'original@example.com',
+        subject: 'New thread',
+        text: 'Fresh message.',
+      }),
+    ),
+  );
+
+  expect(error._tag).toBe('ImapError');
+});
+
 it('adds no threading headers without a reply source', async () => {
   const appended: Array<Buffer> = [];
   const client = {

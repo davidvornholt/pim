@@ -45,12 +45,21 @@ const appendDraft = (
         message: `append draft to ${folder} failed: ${String(cause)}`,
       }),
   }).pipe(
-    Effect.map((response) => ({
-      folder,
-      uid: response === false ? null : (response.uid ?? null),
-      uidValidity:
-        response === false ? null : (response.uidValidity?.toString() ?? null),
-    })),
+    // imapflow resolves false instead of rejecting when the connection can't
+    // take the command, and then nothing was saved.
+    Effect.flatMap((response) =>
+      response === false
+        ? Effect.fail(
+            new ImapError({
+              message: `append draft to ${folder} failed: the connection was not ready, so nothing was saved`,
+            }),
+          )
+        : Effect.succeed({
+            folder,
+            uid: response.uid ?? null,
+            uidValidity: response.uidValidity?.toString() ?? null,
+          }),
+    ),
   );
 
 const deleteDraftContents = (
