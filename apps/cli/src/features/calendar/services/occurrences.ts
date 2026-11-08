@@ -54,8 +54,8 @@ export const tzidOf = (
   return typeof value === 'string' ? value : undefined;
 };
 
-// The zone a time is written in, else the given one. An RDATE may name
-// another zone than DTSTART, and ical.js keeps that zone on the date.
+// An RDATE may name another zone than DTSTART, and ical.js keeps that zone
+// on the date.
 const zoneOf = (
   time: ICAL.Time,
   fallback: string | undefined,
