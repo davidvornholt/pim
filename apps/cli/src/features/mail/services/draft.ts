@@ -20,6 +20,7 @@ import { selectDraftsFolder } from './draft-folder';
 import { listFolders, readMessage, readMessageContents } from './imap-ops';
 import { lockMailbox } from './mailbox-lock';
 import { buildCalendarReply, buildMime } from './mime';
+import { canExpungeByUid } from './uid-expunge';
 import { requireCurrentUidValidity } from './uid-validity';
 
 const readReplySource = (
@@ -117,6 +118,18 @@ const deleteDraft = (
     yield* deleteDraftContents(client, folder, uid, expectedUidValidity);
   }).pipe(Effect.scoped);
 
+const requireUidExpunge = (
+  client: ImapFlow,
+): Effect.Effect<void, DraftError> =>
+  canExpungeByUid(client)
+    ? Effect.void
+    : Effect.fail(
+        new DraftError({
+          message:
+            'refusing to change the draft: the mail server lacks UIDPLUS, so removing the old draft would also expunge every other message marked deleted in the drafts folder',
+        }),
+      );
+
 export const requireDraftsFolder = (
   folders: ReadonlyArray<FolderInfo>,
   requestedFolder: string,
@@ -167,6 +180,7 @@ export const replaceDraft = (
   ImapError | DraftError | MessageNotFoundError | StaleUidError
 > =>
   Effect.gen(function* () {
+    yield* requireUidExpunge(client);
     const folders = yield* listFolders(client);
     const draftsFolder = yield* requireDraftsFolder(folders, input.folder);
     const repliedTo = yield* readReplySource(client, input);
@@ -215,6 +229,7 @@ export const removeDraft = (
   ImapError | DraftError | MessageNotFoundError | StaleUidError
 > =>
   Effect.gen(function* () {
+    yield* requireUidExpunge(client);
     const folders = yield* listFolders(client);
     const draftsFolder = yield* requireDraftsFolder(folders, handle.folder);
     yield* deleteDraft(client, draftsFolder, handle.uid, handle.uidValidity);
