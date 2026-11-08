@@ -99,6 +99,29 @@ describe('occurrencesIn for a series', () => {
       ['2026-10-27T09:00:00.000Z', '2026-10-27T12:00:00.000Z'],
     ]);
   });
+  it('places an RDATE in the zone it is written in, not the zone of DTSTART', () => {
+    const series = vcalendarOf(
+      ...vevent(
+        'UID:zoned-dates@example.com',
+        'DTSTAMP:20261001T000000Z',
+        'DTSTART;TZID=Europe/Berlin:20261020T100000',
+        'DURATION:PT1H',
+        'RDATE;TZID=America/New_York:20261027T100000',
+      ),
+    );
+    const spans = (window: typeof october) =>
+      occurrencesIn(series, window, berlin).map(({ startMs, endMs }) =>
+        [startMs, endMs].map((ms) => new Date(ms).toISOString()),
+      );
+
+    expect(spans(october)).toEqual([
+      ['2026-10-20T08:00:00.000Z', '2026-10-20T09:00:00.000Z'],
+      ['2026-10-27T14:00:00.000Z', '2026-10-27T15:00:00.000Z'],
+    ]);
+    expect(
+      spans(windowOf('2026-10-27T13:00:00Z', '2026-10-27T16:00:00Z')),
+    ).toEqual([['2026-10-27T14:00:00.000Z', '2026-10-27T15:00:00.000Z']]);
+  });
 });
 
 describe('occurrencesIn for a series with overrides', () => {

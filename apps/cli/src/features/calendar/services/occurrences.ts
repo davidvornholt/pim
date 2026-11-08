@@ -54,6 +54,16 @@ export const tzidOf = (
   return typeof value === 'string' ? value : undefined;
 };
 
+// The zone a time is written in, else the given one. An RDATE may name
+// another zone than DTSTART, and ical.js keeps that zone on the date.
+const zoneOf = (
+  time: ICAL.Time,
+  fallback: string | undefined,
+): string | undefined => {
+  const tzid = time.zone?.tzid;
+  return tzid === undefined || tzid === 'floating' ? fallback : tzid;
+};
+
 const uidOf = (component: ICAL.Component): string =>
   String(component.getFirstPropertyValue('uid') ?? '');
 
@@ -90,7 +100,7 @@ export const endMsOf = (
   }
   const duration = component.getFirstPropertyValue('duration');
   if (start.isDate || !(duration instanceof ICAL.Duration)) {
-    return Math.max(startMs, instantOf(end, endTzid, local));
+    return Math.max(startMs, instantOf(end, zoneOf(end, endTzid), local));
   }
   const { weeks, days, hours, minutes, seconds, isNegative } = duration;
   const nominalEnd = start.clone();
@@ -98,7 +108,7 @@ export const endMsOf = (
   const exact = new ICAL.Duration({ hours, minutes, seconds, isNegative });
   return Math.max(
     startMs,
-    instantOf(nominalEnd, startTzid, local) +
+    instantOf(nominalEnd, zoneOf(nominalEnd, startTzid), local) +
       exact.toSeconds() * millisPerSecond,
   );
 };
@@ -125,7 +135,7 @@ const occurrence = (
   { event, start, end, slot, ownEnd }: Instance,
   local: DateTime.TimeZone,
 ): Occurrence => {
-  const startTzid = tzidOf(event.component, 'dtstart');
+  const startTzid = zoneOf(start, tzidOf(event.component, 'dtstart'));
   const startMs = instantOf(start, startTzid, local);
   const fullEnd = endOf(start, end);
   return {
@@ -135,7 +145,10 @@ const occurrence = (
     startMs,
     endMs:
       ownEnd === true
-        ? Math.max(startMs, instantOf(fullEnd, startTzid, local))
+        ? Math.max(
+            startMs,
+            instantOf(fullEnd, zoneOf(fullEnd, startTzid), local),
+          )
         : endMsOf(event, { start, end: fullEnd, startMs }, local),
     ...(slot === undefined
       ? {}
@@ -193,7 +206,10 @@ const instanceAt = (
       },
     };
   }
-  const slot = { time: details.recurrenceId, tzid: ruleTzid };
+  const slot = {
+    time: details.recurrenceId,
+    tzid: zoneOf(details.recurrenceId, ruleTzid),
+  };
   return date instanceof ICAL.Period
     ? { event, start: date.start, end: date.getEnd(), slot, ownEnd: true }
     : { event, start: details.startDate, end: details.endDate, slot };
@@ -270,7 +286,7 @@ const ruleOccurrences = (
     next !== undefined &&
     instantOf(
       next instanceof ICAL.Period ? next.start : next,
-      ruleTzid,
+      zoneOf(next instanceof ICAL.Period ? next.start : next, ruleTzid),
       local,
     ) < window.horizonMs;
     step += 1, next = iterator.next()
