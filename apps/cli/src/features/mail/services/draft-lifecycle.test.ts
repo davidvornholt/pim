@@ -91,6 +91,24 @@ describe('replaceDraft', () => {
     expect(error.message).toContain('saved as uid 42');
   });
 
+  it('fails without deleting the original when imapflow reports that nothing was appended', async () => {
+    const events: Array<string> = [];
+    const client = {
+      ...fakeClient(events),
+      append: () => {
+        events.push('append');
+        return Promise.resolve(false);
+      },
+    } as unknown as ImapFlow;
+
+    const error = await Effect.runPromise(
+      Effect.flip(replaceDraft(client, account, input)),
+    );
+
+    expect(error._tag).toBe('ImapError');
+    expect(events).toEqual(['append']);
+  });
+
   it('maps a non-UIDPLUS append with no uid/uidValidity to null handles', async () => {
     const client = {
       list: () => Promise.resolve(draftFolders),
