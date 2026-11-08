@@ -15,6 +15,7 @@ import type {
 import { listMailboxes } from './imap-ops';
 import { lockMailbox } from './mailbox-lock';
 import { isSelectable, samePath } from './search-folders';
+import { canExpungeByUid } from './uid-expunge';
 import { requireCurrentUidValidity } from './uid-validity';
 
 // One command carries the whole batch, so its uid set must stay near the
@@ -73,15 +74,10 @@ const lockBatch = (
     }
   });
 
-// Without MOVE, imapflow copies and then expunges the source messages, and
-// without UIDPLUS that is a plain EXPUNGE, which also removes every other
-// message marked \Deleted in the folder. IMAP4rev2 includes both extensions.
+// Without MOVE, imapflow copies the messages and then expunges them from the
+// source folder.
 const canMoveWithoutExpungingOthers = (client: ImapFlow): boolean =>
-  client.capabilities.has('MOVE') ||
-  client.capabilities.has('UIDPLUS') ||
-  client.enabled.has('IMAP4REV2') ||
-  (client.capabilities.has('IMAP4rev2') &&
-    !client.capabilities.has('IMAP4rev1'));
+  client.capabilities.has('MOVE') || canExpungeByUid(client);
 
 const destinationFolder = (
   folders: ReadonlyArray<ListResponse>,

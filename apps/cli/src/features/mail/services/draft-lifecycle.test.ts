@@ -39,6 +39,8 @@ describe('replaceDraft', () => {
     options: { readonly deleteResult?: boolean } = {},
   ): ImapFlow =>
     ({
+      capabilities: new Map([['UIDPLUS', true]]),
+      enabled: new Set(),
       list: () => Promise.resolve(draftFolders),
       append: (_folder: string, _raw: Buffer, flags: ReadonlyArray<string>) => {
         events.push(`append:${[...flags].join(',')}`);
@@ -93,6 +95,8 @@ describe('replaceDraft', () => {
 
   it('maps a non-UIDPLUS append with no uid/uidValidity to null handles', async () => {
     const client = {
+      capabilities: new Map([['UIDPLUS', true]]),
+      enabled: new Set(),
       list: () => Promise.resolve(draftFolders),
       append: () => Promise.resolve({ destination: 'Drafts' }),
       getMailboxLock: () => Promise.resolve({ release: () => undefined }),
@@ -123,6 +127,8 @@ describe('removeDraft', () => {
     async (missing) => {
       const events: Array<string> = [];
       const client = {
+        capabilities: new Map([['UIDPLUS', true]]),
+        enabled: new Set(),
         list: () => Promise.resolve(draftFolders),
         getMailboxLock: () =>
           Promise.resolve({ release: () => events.push('release') }),
@@ -147,6 +153,8 @@ describe('removeDraft', () => {
   it('refuses to expunge, without deleting, when the folder uidValidity no longer matches the handle', async () => {
     const events: Array<string> = [];
     const client = {
+      capabilities: new Map([['UIDPLUS', true]]),
+      enabled: new Set(),
       list: () => Promise.resolve(draftFolders),
       getMailboxLock: () => Promise.resolve({ release: () => undefined }),
       mailbox: { uidValidity: 222n },
@@ -168,6 +176,8 @@ describe('removeDraft', () => {
   it('expunges when the folder uidValidity still matches the handle', async () => {
     const events: Array<string> = [];
     const client = {
+      capabilities: new Map([['UIDPLUS', true]]),
+      enabled: new Set(),
       list: () => Promise.resolve(draftFolders),
       getMailboxLock: () => Promise.resolve({ release: () => undefined }),
       mailbox: { uidValidity: 111n },
@@ -182,4 +192,75 @@ describe('removeDraft', () => {
 
     expect(events).toEqual(['delete']);
   });
+});
+
+describe('draft deletion on a server without UID EXPUNGE', () => {
+  // Without UIDPLUS, imapflow's messageDelete ends in a plain EXPUNGE, which
+  // also removes every other message marked \Deleted in the drafts folder.
+  const clientWithout = (
+    events: Array<string>,
+    capabilities: ReadonlyArray<string>,
+    enabled: ReadonlyArray<string> = [],
+  ): ImapFlow =>
+    ({
+      capabilities: new Map(capabilities.map((name) => [name, true])),
+      enabled: new Set(enabled),
+      list: () => Promise.resolve(draftFolders),
+      append: () => {
+        events.push('append');
+        return Promise.resolve({ uid: 42, uidValidity: 111n });
+      },
+      getMailboxLock: () => Promise.resolve({ release: () => undefined }),
+      mailbox: { uidValidity: 111n },
+      fetchOne: () => Promise.resolve({ uid: targetUid, source: draftSource }),
+      messageDelete: () => {
+        events.push('delete');
+        return Promise.resolve(true);
+      },
+    }) as unknown as ImapFlow;
+
+  const replacement = {
+    ...draftHandle(targetUid),
+    to: 'recipient@example.com',
+    subject: 'Updated',
+    text: 'Updated body',
+  };
+  const operations = [
+    [
+      'removeDraft',
+      (client: ImapFlow) => removeDraft(client, draftHandle(targetUid)),
+    ],
+    [
+      'replaceDraft',
+      (client: ImapFlow) => replaceDraft(client, account, replacement),
+    ],
+  ] as const;
+
+  it.each(operations)(
+    '%s refuses before writing anything when the server lacks UIDPLUS, even with MOVE',
+    async (_name, operation) => {
+      const events: Array<string> = [];
+      const error = await Effect.runPromise(
+        Effect.flip(operation(clientWithout(events, ['IMAP4rev1', 'MOVE']))),
+      );
+
+      expect(error._tag).toBe('DraftError');
+      expect(error.message).toContain('UIDPLUS');
+      expect(events).toEqual([]);
+    },
+  );
+
+  it.each(operations)(
+    '%s deletes on an IMAP4rev2 session, which always has UID EXPUNGE',
+    async (_name, operation) => {
+      const events: Array<string> = [];
+      await Effect.runPromise(
+        operation(
+          clientWithout(events, ['IMAP4rev1', 'IMAP4rev2'], ['IMAP4REV2']),
+        ),
+      );
+
+      expect(events).toContain('delete');
+    },
+  );
 });

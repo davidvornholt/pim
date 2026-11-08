@@ -45,6 +45,8 @@ const input: UpdateDraftInput = {
 
 const clientWith = (appended: Array<Buffer>, uidValidity = 111n): ImapFlow =>
   ({
+    capabilities: new Map([['UIDPLUS', true]]),
+    enabled: new Set(),
     list: () => Promise.resolve(draftFolders),
     append: (_folder: string, raw: Buffer) => {
       appended.push(raw);
@@ -100,6 +102,8 @@ describe('draft Bcc lifecycle', () => {
     const events: Array<string> = [];
     const mailbox = { uidValidity: 111n };
     const client = {
+      capabilities: new Map([['UIDPLUS', true]]),
+      enabled: new Set(),
       list: () => Promise.resolve(draftFolders),
       getMailboxLock: () => {
         events.push('lock');
