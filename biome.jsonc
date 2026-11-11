@@ -51,13 +51,15 @@
     {
       // File paths: Bun has no API for the home or temporary directory or for
       // joining paths, so these files use node:os and node:path to work on
-      // Windows as well as Linux and macOS. App code otherwise must not import
-      // Node built-ins.
+      // Windows as well as Linux and macOS. Their tests also create and remove
+      // temporary folders with node:fs/promises, which Bun has no API for. App
+      // code otherwise must not import Node built-ins.
       "includes": [
         "apps/cli/scripts/install.ts",
         "apps/cli/src/app/attachment-file.ts",
         "apps/cli/src/app/attachment-file.test.ts",
         "apps/cli/src/app/cli.test.ts",
+        "apps/cli/src/features/mail/services/drafting-guide.test.ts",
         "apps/cli/src/shared/accounts/config.ts",
         "apps/cli/src/shared/accounts/config.test.ts"
       ],

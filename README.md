@@ -26,6 +26,10 @@ pim status
 
 `pim login` checks each login against the server before storing it in the keyring service `pim` under `mail:<email>`, the calendar and contacts login under `dav:<email>`, and the Microsoft sign-in for Outlook calendars under `graph:<email>`. On Linux this needs a running Secret Service provider such as gnome-keyring.
 
+### Drafting guide
+
+Notes on how agents should write your drafts, such as your sign-off or when to address someone formally, go in `drafting.md` in the same folder as `accounts.toml`. The file is optional and free text. `pim mail draft guide` prints it, and the pim-mail skill has agents read it before they write a draft.
+
 ### Calendars and contacts
 
 An account gets calendars and contacts from a `dav` table with the server's DAV root URL, such as `dav = { url = "https://sync.infomaniak.com/" }` for Infomaniak. pim finds the calendars and address books from there. `user` defaults to the mail user; some providers, Infomaniak among them, use a separate DAV username and app password. `pim login --account <email> --only dav` logs in to calendars and contacts alone.

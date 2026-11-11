@@ -1,6 +1,10 @@
 import { Effect } from 'effect';
 import type { DraftInput, MessageHandle } from '../features/mail/schemas/mail';
 import { requireSafeKeyword } from '../features/mail/services/draft-tags';
+import {
+  draftingGuideFile,
+  readDraftingGuide,
+} from '../features/mail/services/drafting-guide';
 import { Imap } from '../features/mail/services/imap';
 import {
   defineCommand,
@@ -122,6 +126,17 @@ const draftContent = (
     };
   });
 
+const draftingGuide = defineCommand(
+  {
+    name: 'mail draft guide',
+    summary: "Print the user's drafting guide",
+    description: `Print the user's notes on how to write their drafts, such as their sign-off, from ${draftingGuideFile} in the folder of the account config. "guide" is null when the user has not written one.`,
+    flags: {},
+  },
+  (): CommandEffect =>
+    readDraftingGuide.pipe(Effect.map((guide) => json(guide))),
+);
+
 const saveDraft = defineCommand(
   {
     name: 'mail draft save',
@@ -213,4 +228,10 @@ const tagDrafts = defineCommand(
     }),
 );
 
-export const draftCommands = [saveDraft, updateDraft, deleteDraft, tagDrafts];
+export const draftCommands = [
+  draftingGuide,
+  saveDraft,
+  updateDraft,
+  deleteDraft,
+  tagDrafts,
+];

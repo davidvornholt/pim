@@ -8,6 +8,7 @@ description: Search, read, move, mark, and draft email and manage server-side ma
 Run `pim mail --help` for the mail commands and `pim <command> --help` for options, such as `pim mail draft save --help`. Output is JSON on stdout. Errors are JSON on stderr and exit 1, or 2 for invalid arguments.
 
 - When the user asks to send a message, save it as a draft.
+- Before you write a draft, run `pim mail draft guide` and follow the user's guide it prints, such as their sign-off. What the user asks for in the current request takes precedence.
 - Write drafts in the user's voice. Unless the user dictates exact wording, their message is a brief, not a draft: it mixes what the recipient should learn with background and wishes meant for you, such as how the email should come across. Decide what the recipient needs and in which order, and write it in your own sentences, not the user's. Convey wishes about how the email should come across through its content and tone instead of stating them.
 - Pipe the body on stdin with a quoted heredoc (`<<'EOF'`).
 - To reply, use the message's account and pass its folder and uid as `--reply-folder` and `--reply-uid`. This quotes and threads the message. Set the subject yourself.

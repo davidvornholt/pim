@@ -1,5 +1,5 @@
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { Context, Effect, Layer, Result } from 'effect';
 import { ConfigError, UnknownAccountError } from '../errors/accounts';
 import { type Account, decodeAccounts, findAccount } from './account';
@@ -14,6 +14,11 @@ const configPath = (): string =>
     'pim',
     'accounts.toml',
   );
+
+// pim's other config files, such as the drafting guide, live in the folder of
+// the account config, so PIM_CONFIG moves them too.
+export const besideAccountConfig = (fileName: string): string =>
+  join(dirname(configPath()), fileName);
 
 const missingConfigMessage = (path: string): string =>
   `No account config at ${path}. Create it with one [accounts."<email>"] table per account containing name and at least one of: mail = { host = "<imap host>" } (port defaults to 993, secure to true, user to the email, auth to "password"), dav = { url = "<https DAV root>" }, graph = {}. Then run: pim login`;
