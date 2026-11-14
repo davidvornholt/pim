@@ -16,22 +16,8 @@ let
   # the flake's lastModifiedDate (YYYYMMDDHHMMSS).
   datePart = start: length: builtins.substring start length lastModifiedDate;
   version = "0-unstable-${datePart 0 4}-${datePart 4 2}-${datePart 6 2}";
-  # The repository without dependencies, build output, and local state, which a
-  # dirty checkout or a path: flake would otherwise copy into the store.
-  # lib.fileset can't exclude a directory by name at any depth, so this filters
-  # the source by name instead.
-  src = lib.cleanSourceWith {
-    src = lib.cleanSource ../.;
-    filter =
-      path: _type:
-      !builtins.elem (baseNameOf path) [
-        ".direnv"
-        ".turbo"
-        "dist"
-        "node_modules"
-        "result"
-      ];
-  };
+  # The files git doesn't ignore; package-source.nix says what that protects.
+  src = import ./package-source.nix { inherit lib; } ../.;
   skills = builtins.attrNames (
     lib.filterAttrs (_name: type: type == "directory") (builtins.readDir ../apps/cli/skills)
   );
