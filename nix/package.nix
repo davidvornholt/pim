@@ -8,7 +8,6 @@
   bun,
   lastModifiedDate,
   lib,
-  nix-gitignore,
   stdenvNoCC,
 }:
 let
@@ -17,9 +16,8 @@ let
   # the flake's lastModifiedDate (YYYYMMDDHHMMSS).
   datePart = start: length: builtins.substring start length lastModifiedDate;
   version = "0-unstable-${datePart 0 4}-${datePart 4 2}-${datePart 6 2}";
-  # The files git doesn't ignore, so that a dirty checkout or a path: flake
-  # can't copy local env files, dependencies, or build output into the store.
-  src = import ./package-source.nix { inherit lib nix-gitignore; } ../.;
+  # The files git doesn't ignore; package-source.nix says what that protects.
+  src = import ./package-source.nix { inherit lib; } ../.;
   skills = builtins.attrNames (
     lib.filterAttrs (_name: type: type == "directory") (builtins.readDir ../apps/cli/skills)
   );

@@ -1,7 +1,8 @@
-# Fails when the package source keeps a path that git ignores or drops one that
-# git keeps. It asks `git check-ignore` about every path in the repository and
-# about a sample path for each .gitignore pattern, such as
-# .env.local.standards-x.tmp for `.env.local.standards-*.tmp`.
+# Fails when package-source.nix and git disagree about whether a path is
+# ignored. It asks `git check-ignore` about every path in the repository, about
+# a sample path for each .gitignore pattern, such as
+# .env.local.standards-x.tmp for `.env.local.standards-*.tmp`, and about cases
+# below that the repository's .gitignore files don't show.
 {
   git,
   lib,
@@ -9,6 +10,7 @@
   src,
 }:
 let
+  source = import ./package-source.nix { inherit lib; };
   rootString = toString src.origSrc;
   join = dir: name: if dir == "" then name else "${dir}/${name}";
   keepsPath = relative: type: src.filter "${rootString}/${relative}" type;
@@ -34,16 +36,13 @@ let
     lib.filter ({ relative, type }: lib.cleanSourceFilter "${rootString}/${relative}" type) (walk "");
 
   # A path that each .gitignore pattern matches, also one directory deeper for
-  # a pattern that applies at any depth. Patterns with character classes or
-  # escapes are left out.
+  # a pattern that applies at any depth.
   patternSamples =
     lib.concatMap
       (
         { relative, ... }:
         let
           base = dirOf relative;
-          lines = lib.splitString "\n" (builtins.readFile "${rootString}/${relative}");
-          usable = line: builtins.match "(#.*|[[:space:]]*|.*[][\\\\].*)" line == null;
           sample =
             line:
             let
@@ -65,7 +64,7 @@ let
                     "x"
                   ]
                   trimmed;
-              anchored = lib.hasPrefix "/" pattern || lib.hasInfix "/" trimmed;
+              anchored = lib.hasInfix "/" (lib.removeSuffix "/" pattern);
               at = prefix: {
                 relative = join (if base == "." then "" else base) (prefix + name);
                 type = if directory then "directory" else "regular";
@@ -73,7 +72,7 @@ let
             in
             [ (at "") ] ++ lib.optional (!anchored) (at "sample-directory/");
         in
-        lib.concatMap sample (lib.filter usable lines)
+        lib.concatMap sample (source.patternsOf (builtins.readFile "${rootString}/${relative}"))
       )
       (
         lib.filter (
@@ -82,9 +81,10 @@ let
         ) existingPaths
       );
 
-  # Whether the source keeps a path that may not exist, which needs every
-  # directory above it kept as well.
+  # Whether keeps keeps a path that may not exist, which needs every directory
+  # above it kept as well.
   keepsWithParents =
+    keeps:
     { relative, type }:
     let
       parts = lib.splitString "/" relative;
@@ -92,10 +92,160 @@ let
         lib.length parts - 1
       );
     in
-    lib.all (parent: keepsPath parent "directory") parents && keepsPath relative type;
+    lib.all (parent: keeps parent "directory") parents && keeps relative type;
+
+  # Cases with the .gitignore files for each directory, by its path, and the
+  # paths to ask about, where a trailing slash marks a directory.
+  cases = {
+    trailing-spaces = {
+      gitignores."" = "private.yaml   \nprivate/   \n";
+      paths = [
+        "private.yaml"
+        "private/"
+        "private/data"
+        "public.yaml"
+      ];
+    };
+    carriage-returns = {
+      gitignores."" = "private.yaml\r\nlocal/\r\n";
+      paths = [
+        "private.yaml"
+        "local/"
+        "local/data"
+      ];
+    };
+    byte-order-mark = {
+      gitignores."" = builtins.fromJSON ''"﻿private.yaml\n"'';
+      paths = [ "private.yaml" ];
+    };
+    tab-name = {
+      gitignores."" = "\t\n";
+      paths = [
+        "\t"
+        "public"
+      ];
+    };
+    directory-negation = {
+      gitignores."" = "bar/\n!foo/\n";
+      paths = [
+        "foo/"
+        "foo/bar/"
+        "foo/bar/private.yaml"
+      ];
+    };
+    negated-directory-name = {
+      gitignores."" = "*.yaml\n!foo\n!a/**/b.yaml\n";
+      paths = [
+        "foo/"
+        "foo/private.yaml"
+        "a/"
+        "a/b.yaml"
+        "a/x/"
+        "a/x/b.yaml"
+        "a/x/c.yaml"
+      ];
+    };
+    metacharacters = {
+      gitignores."" = "a+b.yaml\nc|d\n(e)\n^f\n$g\n{h}\n.i\n";
+      paths = [
+        "a+b.yaml"
+        "aab.yaml"
+        "c|d"
+        "c"
+        "d"
+        "(e)"
+        "e"
+        "^f"
+        "f"
+        "$g"
+        "g"
+        "{h}"
+        "h"
+        ".i"
+        "xi"
+      ];
+    };
+    anchoring = {
+      gitignores."" = "/root-only\nmid/dle\n*.log\n**/build\nlogs/**\n/top/**/deep\n";
+      paths = [
+        "root-only"
+        "a/root-only"
+        "mid/"
+        "mid/dle"
+        "a/mid/dle"
+        "x.log"
+        "a/b/x.log"
+        "build"
+        "a/b/build"
+        "logs/"
+        "logs/x"
+        "logs/a/b"
+        "top/"
+        "top/deep"
+        "top/a/b/deep"
+        "a/top/deep"
+      ];
+    };
+    nested = {
+      gitignores = {
+        "" = "*.yaml\nanchored\n";
+        sub = "!keep.yaml\n/anchored\n!/deeper/\n";
+      };
+      paths = [
+        "sub/"
+        "sub/keep.yaml"
+        "sub/other.yaml"
+        "sub/anchored"
+        "sub/deeper/"
+        "sub/deeper/anchored"
+        "sub/deeper/keep.yaml"
+        "anchored"
+      ];
+    };
+  };
+
+  # Lines git accepts that package-source.nix must refuse rather than guess.
+  unsupportedLines = [
+    "private\\.yaml"
+    "private\\ "
+    "[!a].yaml"
+    "a[/]b.yaml"
+    "private[.yaml"
+    "a**b"
+  ];
+  acceptedUnsupportedLines = lib.filter (
+    line: (builtins.tryEval (builtins.deepSeq (source.rulesOf "" line) true)).success
+  ) unsupportedLines;
+
+  lineFile = name: paths: builtins.toFile name (lib.concatMapStrings (path: path + "\n") paths);
+
+  # A script that builds a tree with the samples and .gitignore files and
+  # compares git's answers with keeps.
+  compare =
+    {
+      name,
+      samples,
+      keeps,
+      copyGitignores,
+    }:
+    let
+      relativesOf = list: map (sample: sample.relative) list;
+    in
+    ''
+      compare ${lib.escapeShellArg name} \
+        ${
+          lineFile "directories" (relativesOf (lib.filter (sample: sample.type == "directory") samples))
+        } \
+        ${lineFile "files" (relativesOf (lib.filter (sample: sample.type != "directory") samples))} \
+        ${lineFile "all" (relativesOf samples)} \
+        ${
+          lineFile "dropped" (relativesOf (lib.filter (sample: !keepsWithParents keeps sample) samples))
+        } \
+        ${lib.escapeShellArg copyGitignores}
+    '';
 
   # One sample per path; for a path that exists, the type it has.
-  samples = lib.attrValues (
+  repositorySamples = lib.attrValues (
     builtins.listToAttrs (
       map (sample: {
         name = sample.relative;
@@ -103,51 +253,92 @@ let
       }) (existingPaths ++ patternSamples)
     )
   );
-  lineFile = name: paths: builtins.toFile name (lib.concatMapStrings (path: path + "\n") paths);
-in
-runCommand "package-source-check"
-  {
-    nativeBuildInputs = [ git ];
-    directories = lineFile "directories" (
-      map (sample: sample.relative) (lib.filter (sample: sample.type == "directory") samples)
-    );
-    files = lineFile "files" (
-      map (sample: sample.relative) (lib.filter (sample: sample.type != "directory") samples)
-    );
-    all = lineFile "all" (map (sample: sample.relative) samples);
-    dropped = lineFile "dropped" (
-      map (sample: sample.relative) (lib.filter (sample: !keepsWithParents sample) samples)
-    );
-  }
-  ''
-    export HOME=$TMPDIR GIT_CONFIG_NOSYSTEM=1
-    mkdir tree
-    cd tree
-    git init --quiet
-    # git matches a pattern that ends in a slash only against a directory it
-    # can see, so each directory gets a file.
-    while IFS= read -r path; do
-      mkdir -p -- "$path"
-      touch -- "$path/.sample"
-    done < "$directories"
-    while IFS= read -r path; do
-      mkdir -p -- "$(dirname -- "$path")"
-      touch -- "$path"
-    done < "$files"
-    for gitignore in $(cd ${src} && find . -name .gitignore); do
-      cp -- "${src}/$gitignore" "$gitignore"
-    done
 
-    # check-ignore exits with 1 when it ignores nothing and above 1 on errors.
-    status=0
-    git check-ignore --no-index --stdin < "$all" > "$TMPDIR/ignored" || status=$?
-    if [ "$status" -gt 1 ]; then exit "$status"; fi
-    sort "$TMPDIR/ignored" > "$TMPDIR/ignored-by-git"
-    sort "$dropped" > "$TMPDIR/dropped-by-nix"
-    if ! diff -u --label "dropped by the package source" --label "ignored by git" \
-      "$TMPDIR/dropped-by-nix" "$TMPDIR/ignored-by-git"; then
-      echo "The package source and .gitignore disagree on the paths above." >&2
-      exit 1
-    fi
-    touch "$out"
-  ''
+  caseScript =
+    name:
+    { gitignores, paths }:
+    let
+      rulesFor =
+        dir:
+        (if dir == "" then [ ] else rulesFor (source.parentOf dir))
+        ++ lib.optionals (gitignores ? ${dir}) (source.rulesOf dir gitignores.${dir});
+    in
+    compare {
+      name = "case ${name}";
+      samples = map (
+        path:
+        if lib.hasSuffix "/" path then
+          {
+            relative = lib.removeSuffix "/" path;
+            type = "directory";
+          }
+        else
+          {
+            relative = path;
+            type = "regular";
+          }
+      ) paths;
+      keeps = relative: source.keeps (rulesFor (source.parentOf relative)) relative;
+      copyGitignores = lib.concatStrings (
+        lib.mapAttrsToList (dir: text: ''
+          mkdir -p ./${lib.escapeShellArg dir}
+          cp ${builtins.toFile "gitignore" text} ./${lib.escapeShellArg dir}/.gitignore
+        '') gitignores
+      );
+    };
+in
+runCommand "package-source-check" { nativeBuildInputs = [ git ]; } ''
+  export HOME=$TMPDIR GIT_CONFIG_NOSYSTEM=1
+  failed=0
+  compare() {
+    local name=$1 directories=$2 files=$3 all=$4 dropped=$5 copy_gitignores=$6
+    local tree
+    tree=$(mktemp -d)
+    (
+      cd "$tree"
+      git init --quiet
+      # git matches a pattern that ends in a slash only against a directory it
+      # can see, so each directory gets a file.
+      while IFS= read -r path; do
+        mkdir -p -- "$path"
+        touch -- "$path/.sample"
+      done < "$directories"
+      while IFS= read -r path; do
+        mkdir -p -- "$(dirname -- "$path")"
+        touch -- "$path"
+      done < "$files"
+      eval "$copy_gitignores"
+      # check-ignore exits with 1 when it ignores nothing and above 1 on errors.
+      status=0
+      tr '\n' '\0' < "$all" | git check-ignore --no-index -z --stdin > "$TMPDIR/ignored" || status=$?
+      if [ "$status" -gt 1 ]; then exit "$status"; fi
+      tr '\0' '\n' < "$TMPDIR/ignored" | sort > "$TMPDIR/ignored-by-git"
+      sort "$dropped" > "$TMPDIR/dropped-by-nix"
+      diff -u --label "dropped by the package source" --label "ignored by git" \
+        "$TMPDIR/dropped-by-nix" "$TMPDIR/ignored-by-git"
+    ) || {
+      echo "The package source and git disagree on the paths above, in $name." >&2
+      failed=1
+    }
+  }
+
+  ${compare {
+    name = "the repository";
+    samples = repositorySamples;
+    keeps = keepsPath;
+    copyGitignores = ''
+      (cd ${src} && find . -name .gitignore -print0) | while IFS= read -r -d "" gitignore; do
+        mkdir -p -- "$(dirname -- "$gitignore")"
+        cp -P -- "${src}/$gitignore" "$gitignore"
+      done
+    '';
+  }}
+  ${lib.concatStrings (lib.mapAttrsToList caseScript cases)}
+  ${lib.optionalString (acceptedUnsupportedLines != [ ]) ''
+    echo "package-source.nix accepted lines it can't match as git does:" >&2
+    printf '%s\n' ${lib.escapeShellArgs acceptedUnsupportedLines} >&2
+    failed=1
+  ''}
+  if [ "$failed" -ne 0 ]; then exit 1; fi
+  touch "$out"
+''
