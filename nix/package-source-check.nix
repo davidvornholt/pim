@@ -222,6 +222,8 @@ let
     "a[/]b.yaml"
     "private[.yaml"
     "a**b"
+    "private/**/**"
+    "**/**"
   ];
   acceptedUnsupportedLines = lib.filter (
     line: (builtins.tryEval (builtins.deepSeq (source.rulesOf "" line) true)).success

@@ -7,7 +7,8 @@
 # checkout, copies only tracked files.
 #
 # Evaluation fails on a .gitignore line that this can't match exactly as git
-# does, such as one with a backslash, a character class, or ** inside a name.
+# does, such as one with a backslash, a character class, ** inside a name, or
+# ** twice in a row.
 # package-source-check.nix compares the result with git.
 { lib }:
 let
@@ -46,6 +47,7 @@ let
         segments = lib.splitString "/" (lib.removePrefix "/" body);
         supported =
           builtins.match ".*[][\\\\].*" pattern == null
+          && !lib.hasInfix "**/**" pattern
           && lib.all (segment: segment != "" && (segment == "**" || !lib.hasInfix "**" segment)) segments;
         character =
           char:
@@ -69,7 +71,7 @@ let
       if !supported then
         throw "package-source.nix can't match the line `${line}` in ${
           if dir == "" then "" else "${dir}/"
-        }.gitignore as git does. Write it without backslashes, character classes, or ** inside a name."
+        }.gitignore as git does. Write it without backslashes, character classes, ** inside a name, or ** twice in a row."
       else
         {
           base = dir;
