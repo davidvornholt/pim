@@ -35,64 +35,63 @@ let
     # lib.cleanSource also drops .git and editor backups, which git never ignores.
     lib.filter ({ relative, type }: lib.cleanSourceFilter "${rootString}/${relative}" type) (walk "");
 
+  # The .gitignore files git reads: each regular one in a directory the source
+  # keeps, also when the source drops the file itself. git doesn't follow a
+  # symlinked one.
+  gitignores = lib.filter (
+    { relative, type }: type == "regular" && baseNameOf relative == ".gitignore"
+  ) existingPaths;
+
   # A path that each .gitignore pattern matches, also one directory deeper for
   # a pattern that applies at any depth.
-  patternSamples =
-    lib.concatMap
-      (
-        { relative, ... }:
+  patternSamples = lib.concatMap (
+    { relative, ... }:
+    let
+      base = dirOf relative;
+      sample =
+        line:
         let
-          base = dirOf relative;
-          sample =
-            line:
-            let
-              pattern = lib.removePrefix "!" line;
-              directory = lib.hasSuffix "/" pattern;
-              trimmed = lib.removePrefix "/" (lib.removeSuffix "/" pattern);
-              name =
-                builtins.replaceStrings
-                  [
-                    "**/"
-                    "**"
-                    "*"
-                    "?"
-                  ]
-                  [
-                    ""
-                    "x"
-                    "x"
-                    "x"
-                  ]
-                  trimmed;
-              anchored = lib.hasInfix "/" (lib.removeSuffix "/" pattern);
-              at = prefix: {
-                relative = join (if base == "." then "" else base) (prefix + name);
-                type = if directory then "directory" else "regular";
-              };
-            in
-            [ (at "") ] ++ lib.optional (!anchored) (at "sample-directory/");
+          pattern = lib.removePrefix "!" line;
+          directory = lib.hasSuffix "/" pattern;
+          trimmed = lib.removePrefix "/" (lib.removeSuffix "/" pattern);
+          name =
+            builtins.replaceStrings
+              [
+                "**/"
+                "**"
+                "*"
+                "?"
+              ]
+              [
+                ""
+                "x"
+                "x"
+                "x"
+              ]
+              trimmed;
+          anchored = lib.hasInfix "/" (lib.removeSuffix "/" pattern);
+          at = prefix: {
+            relative = join (if base == "." then "" else base) (prefix + name);
+            type = if directory then "directory" else "regular";
+          };
         in
-        lib.concatMap sample (source.patternsOf (builtins.readFile "${rootString}/${relative}"))
-      )
-      (
-        lib.filter (
-          { relative, type }:
-          type == "regular" && baseNameOf relative == ".gitignore" && keepsPath relative type
-        ) existingPaths
-      );
+        [ (at "") ] ++ lib.optional (!anchored) (at "sample-directory/");
+    in
+    lib.concatMap sample (source.patternsOf (builtins.readFile "${rootString}/${relative}"))
+  ) gitignores;
 
   # Whether keeps keeps a path that may not exist, which needs every directory
   # above it kept as well.
   keepsWithParents =
     keeps:
     { relative, type }:
+    lib.all (parent: keeps parent "directory") (parentsOf relative) && keeps relative type;
+  parentsOf =
+    relative:
     let
       parts = lib.splitString "/" relative;
-      parents = lib.genList (count: lib.concatStringsSep "/" (lib.take (count + 1) parts)) (
-        lib.length parts - 1
-      );
     in
-    lib.all (parent: keeps parent "directory") parents && keeps relative type;
+    lib.genList (count: lib.concatStringsSep "/" (lib.take (count + 1) parts)) (lib.length parts - 1);
 
   # Cases with the .gitignore files for each directory, by its path, and the
   # paths to ask about, where a trailing slash marks a directory.
@@ -186,6 +185,17 @@ let
         "a/top/deep"
       ];
     };
+    ignored-gitignore = {
+      gitignores = {
+        "" = "sub/.gitignore\n";
+        sub = "private.txt\n";
+      };
+      paths = [
+        "sub/"
+        "sub/.gitignore"
+        "sub/private.txt"
+      ];
+    };
     nested = {
       gitignores = {
         "" = "*.yaml\nanchored\n";
@@ -244,15 +254,37 @@ let
         ${lib.escapeShellArg copyGitignores}
     '';
 
-  # One sample per path; for a path that exists, the type it has.
-  repositorySamples = lib.attrValues (
-    builtins.listToAttrs (
-      map (sample: {
-        name = sample.relative;
-        value = sample;
-      }) (existingPaths ++ patternSamples)
-    )
-  );
+  # One sample per path. A path that exists keeps its type, a pattern sample
+  # below an existing file is left out, and one that another sample is below
+  # becomes a directory.
+  repositorySamples =
+    let
+      byPath =
+        samples:
+        builtins.listToAttrs (
+          map (sample: {
+            name = sample.relative;
+            value = sample;
+          }) samples
+        );
+      existing = byPath existingPaths;
+      placeable = lib.filter (
+        sample:
+        !existing ? ${sample.relative}
+        && lib.all (parent: (existing.${parent}.type or "directory") == "directory") (
+          parentsOf sample.relative
+        )
+      ) patternSamples;
+      parents = lib.genAttrs (lib.concatMap (sample: parentsOf sample.relative) placeable) (_: true);
+    in
+    lib.attrValues existing
+    ++ lib.attrValues (
+      byPath (
+        map (
+          sample: if parents ? ${sample.relative} then sample // { type = "directory"; } else sample
+        ) placeable
+      )
+    );
 
   caseScript =
     name:
@@ -326,12 +358,13 @@ runCommand "package-source-check" { nativeBuildInputs = [ git ]; } ''
     name = "the repository";
     samples = repositorySamples;
     keeps = keepsPath;
-    copyGitignores = ''
-      (cd ${src} && find . -name .gitignore -print0) | while IFS= read -r -d "" gitignore; do
-        mkdir -p -- "$(dirname -- "$gitignore")"
-        cp -P -- "${src}/$gitignore" "$gitignore"
-      done
-    '';
+    copyGitignores = lib.concatMapStrings (
+      { relative, ... }:
+      ''
+        mkdir -p ./${lib.escapeShellArg (dirOf relative)}
+        cp ${builtins.toFile "gitignore" (builtins.readFile "${rootString}/${relative}")} ./${lib.escapeShellArg relative}
+      ''
+    ) gitignores;
   }}
   ${lib.concatStrings (lib.mapAttrsToList caseScript cases)}
   ${lib.optionalString (acceptedUnsupportedLines != [ ]) ''
