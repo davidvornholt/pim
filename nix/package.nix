@@ -58,7 +58,7 @@ let
       runHook postInstall
     '';
     dontFixup = true;
-    outputHash = "sha256-j1zpx2V/X3/tpDZNvnIq26CVK4svN83JAchWDLNuY8c=";
+    outputHash = "sha256-Jg7FlDsCsF47Vhq2/IQiiVak3PqL7Agjkf0vDgkEiNs=";
     outputHashAlgo = "sha256";
     outputHashMode = "recursive";
     impureEnvVars = lib.fetchers.proxyImpureEnvVars;
