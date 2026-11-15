@@ -11,6 +11,7 @@ import type {
   SearchResult,
 } from '../schemas/mail';
 import type { MailboxSearchHit } from './imap-search';
+import { withoutCopies } from './search-copies';
 import { resolveAccountSearchOptions } from './search-options';
 
 type AccountSearchHit = MailboxSearchHit & {
@@ -51,23 +52,6 @@ const newestFirst = (left: AccountSearchHit, right: AccountSearchHit): number =>
   left.account.localeCompare(right.account) ||
   left.hit.folder.localeCompare(right.hit.folder) ||
   right.hit.uid - left.hit.uid;
-
-const uniqueHits = (
-  hits: ReadonlyArray<AccountSearchHit>,
-): ReadonlyArray<AccountSearchHit> => {
-  const seenMessageIds = new Set<string>();
-  return hits.filter(({ messageId }) => {
-    const normalized = messageId.trim();
-    if (normalized === '') {
-      return true;
-    }
-    if (seenMessageIds.has(normalized)) {
-      return false;
-    }
-    seenMessageIds.add(normalized);
-    return true;
-  });
-};
 
 const toSearchHit = ({ account, hit }: AccountSearchHit): SearchHit => ({
   account,
@@ -143,7 +127,11 @@ export const searchAllAccounts = (
         : [],
     );
     return {
-      hits: uniqueHits(mergedHits.sort(newestFirst))
+      hits: withoutCopies(
+        mergedHits.sort(newestFirst),
+        ({ copyKey }) => copyKey,
+        ({ account }) => account,
+      )
         .slice(0, options.limit)
         .map(toSearchHit),
       failures,

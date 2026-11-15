@@ -23,7 +23,7 @@ describe('searchAllAccounts', () => {
                 '<duplicate@example.com>',
                 '2026-07-14T08:00:00Z',
               ),
-              mailboxDeduplicationId: 'server-one-id',
+              mailboxCopyKey: 'server-one-id',
             },
             mailboxHit(2, '<older@example.com>', '2026-07-13T08:00:00Z'),
           ]);
@@ -35,7 +35,7 @@ describe('searchAllAccounts', () => {
                 '<duplicate@example.com>',
                 '2026-07-15T08:00:00Z',
               ),
-              mailboxDeduplicationId: 'server-two-id',
+              mailboxCopyKey: 'server-two-id',
             },
             mailboxHit(
               newestUid,
@@ -126,6 +126,36 @@ describe('searchAllAccounts', () => {
     expect(result.message).toContain(
       'second@example.com: No stored credentials for second@example.com',
     );
+  });
+});
+
+describe('searchAllAccounts with a reused Message-ID', () => {
+  it('keeps different messages of one account that share a Message-ID', async () => {
+    const result = await Effect.runPromise(
+      searchAllAccounts(
+        ['first@example.com', 'second@example.com'],
+        { ...searchOptions, limit: 20 },
+        (account) =>
+          Effect.succeed(
+            account === 'first@example.com'
+              ? [
+                  mailboxHit(
+                    11,
+                    '<reused@example.com>',
+                    '2026-11-15T12:00:00Z',
+                  ),
+                  mailboxHit(
+                    10,
+                    '<reused@example.com>',
+                    '2026-11-14T12:00:00Z',
+                  ),
+                ]
+              : [],
+          ),
+      ),
+    );
+
+    expect(result.hits.map(({ uid }) => uid)).toEqual([11, 10]);
   });
 });
 

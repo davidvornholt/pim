@@ -6,12 +6,15 @@ import { imapError, listMailboxes } from './imap-ops';
 import { buildSearchQuery } from './imap-query';
 import { uidSets } from './imap-uid-sets';
 import { lockMailbox } from './mailbox-lock';
+import { copyFingerprint, withoutCopies } from './search-copies';
 import { selectSearchFolders } from './search-folders';
 
 export type MailboxSearchHit = {
   readonly hit: Omit<SearchHit, 'account'>;
-  readonly mailboxDeduplicationId: string;
-  readonly messageId: string;
+  // Matches the hit's copies in other folders of the account.
+  readonly mailboxCopyKey: string;
+  // Matches the hit's copies in other accounts.
+  readonly copyKey: string;
   readonly receivedAt: string;
 };
 
@@ -32,18 +35,26 @@ const toCandidate = (
   uidValidity: string,
 ): MailboxSearchHit => {
   const { envelope } = message;
+  const from = joinAddresses(envelope?.from);
+  const subject = envelope?.subject ?? '';
+  const copyKey = copyFingerprint({
+    messageId: envelope?.messageId ?? '',
+    sentAt: toIsoDate(envelope?.date),
+    subject,
+    from,
+  });
   return {
     hit: {
       uid: message.uid,
       uidValidity,
       folder,
-      from: joinAddresses(envelope?.from),
+      from,
       to: joinAddresses(envelope?.to),
-      subject: envelope?.subject ?? '',
+      subject,
       date: toIsoDate(envelope?.date ?? message.internalDate),
     },
-    mailboxDeduplicationId: message.emailId ?? envelope?.messageId ?? '',
-    messageId: envelope?.messageId ?? '',
+    mailboxCopyKey: message.emailId ?? copyKey,
+    copyKey,
     receivedAt: toIsoDate(message.internalDate ?? envelope?.date),
   };
 };
@@ -164,23 +175,6 @@ const newestFirst = (left: MailboxSearchHit, right: MailboxSearchHit): number =>
   right.hit.uid - left.hit.uid ||
   left.hit.folder.localeCompare(right.hit.folder);
 
-const uniqueCandidates = (
-  candidates: ReadonlyArray<MailboxSearchHit>,
-): ReadonlyArray<MailboxSearchHit> => {
-  const seenMessageIds = new Set<string>();
-  return candidates.filter((candidate) => {
-    const messageId = candidate.mailboxDeduplicationId.trim();
-    if (messageId === '') {
-      return true;
-    }
-    if (seenMessageIds.has(messageId)) {
-      return false;
-    }
-    seenMessageIds.add(messageId);
-    return true;
-  });
-};
-
 const foldersForSearch = (
   client: ImapFlow,
   options: SearchOptions,
@@ -204,6 +198,12 @@ export const searchMailboxes = (
     );
     const sorted = matches.flat().sort(newestFirst);
     const candidates =
-      options.scope === 'folder' ? sorted : uniqueCandidates(sorted);
+      options.scope === 'folder'
+        ? sorted
+        : withoutCopies(
+            sorted,
+            ({ mailboxCopyKey }) => mailboxCopyKey,
+            ({ hit: { folder } }) => folder,
+          );
     return candidates.slice(0, options.limit);
   });

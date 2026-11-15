@@ -79,18 +79,20 @@ const fakeClient = (
 const oldUid = 3;
 const oldestUid = 4;
 
+// date is when the message arrived; sentAt is its Date header, which copies
+// in other folders share.
 const message = (
   uid: number,
   date: string,
   messageId: string,
-  emailId?: string,
+  { emailId, sentAt = date }: { emailId?: string; sentAt?: string } = {},
 ): FetchMessageObject => ({
   seq: uid,
   uid,
   emailId,
   internalDate: new Date(date),
   envelope: {
-    date: new Date(date),
+    date: new Date(sentAt),
     messageId,
     subject: messageId,
   },
@@ -187,7 +189,11 @@ describe('searchMailboxes across folders', () => {
         ['Archive', [message(2, '2026-07-14T08:00:00Z', '<new@example.com>')]],
         [
           'Sent',
-          [message(sentUid, '2026-07-13T08:00:00Z', '<same@example.com>')],
+          [
+            message(sentUid, '2026-07-13T08:00:00Z', '<same@example.com>', {
+              sentAt: '2026-07-12T08:00:00Z',
+            }),
+          ],
         ],
       ]),
       events,
@@ -224,23 +230,17 @@ describe('searchMailboxes across folders', () => {
         [
           'INBOX',
           [
-            message(
-              1,
-              '2026-07-15T08:00:00Z',
-              '<same@example.com>',
-              'ObjectId',
-            ),
+            message(1, '2026-07-15T08:00:00Z', '<same@example.com>', {
+              emailId: 'ObjectId',
+            }),
           ],
         ],
         [
           'Archive',
           [
-            message(
-              2,
-              '2026-07-16T08:00:00Z',
-              '<same@example.com>',
-              'objectid',
-            ),
+            message(2, '2026-07-16T08:00:00Z', '<same@example.com>', {
+              emailId: 'objectid',
+            }),
           ],
         ],
       ]),
@@ -256,6 +256,47 @@ describe('searchMailboxes across folders', () => {
     );
 
     expect(hits.map(({ hit: { uid } }) => uid)).toEqual([2, 1]);
+  });
+});
+
+describe('searchMailboxes with a reused Message-ID', () => {
+  it('keeps different messages in one folder that share a Message-ID', async () => {
+    // Some senders reuse one Message-ID for every message, as for invoices.
+    const client = fakeClient(
+      [listedFolder('INBOX', '\\Inbox'), listedFolder('Archive', '\\Archive')],
+      new Map([
+        [
+          'INBOX',
+          [
+            message(10, '2026-11-14T12:00:00Z', '<reused@example.com>'),
+            message(11, '2026-11-15T12:00:00Z', '<reused@example.com>'),
+          ],
+        ],
+        [
+          'Archive',
+          [
+            message(12, '2026-11-16T12:00:00Z', '<reused@example.com>', {
+              sentAt: '2026-11-14T12:00:00Z',
+            }),
+          ],
+        ],
+      ]),
+      [],
+    );
+
+    const hits = await Effect.runPromise(
+      searchMailboxes(
+        client,
+        { scope: 'all', query: 'invoice', limit: 20 },
+        false,
+      ),
+    );
+
+    // Archive uid 12 is a copy of INBOX uid 10, so only one of them is listed.
+    expect(hits.map(({ hit: { folder, uid } }) => ({ folder, uid }))).toEqual([
+      { folder: 'Archive', uid: 12 },
+      { folder: 'INBOX', uid: 11 },
+    ]);
   });
 });
 
