@@ -134,7 +134,7 @@ describe('searchAllAccounts', () => {
 });
 
 describe('searchAllAccounts with identical headers', () => {
-  it('keeps two messages of one account when another account holds a copy', async () => {
+  it('keeps every message of one account that shares headers with a copy elsewhere', async () => {
     const result = await Effect.runPromise(
       searchAllAccounts(
         ['first@example.com', 'second@example.com'],
@@ -165,9 +165,11 @@ describe('searchAllAccounts with identical headers', () => {
       ),
     );
 
-    // second@example.com's uid 12 stands for one of first@example.com's.
+    // uid 12 copies one of first@example.com's messages, but nothing tells
+    // which, so dropping either could hide the other.
     expect(result.hits.map(({ account, uid }) => ({ account, uid }))).toEqual([
       { account: 'second@example.com', uid: 12 },
+      { account: 'first@example.com', uid: 11 },
       { account: 'first@example.com', uid: 10 },
     ]);
   });

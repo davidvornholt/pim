@@ -16,31 +16,36 @@ export const copyFingerprint = ({
   return id === '' ? '' : JSON.stringify([id, sentAt, subject, from]);
 };
 
-// Drops hits that are copies of hits from another location, such as another
-// folder. Hits from one location are distinct messages even when their keys
-// match, so each key keeps as many hits as the location that has the most of
-// them, and a copy elsewhere stands in for one of those. An empty key never
+// Keeps one hit per key, dropping its copies from other locations, such as
+// other folders. Hits from one location are distinct messages even when their
+// keys match, and nothing tells which of them a copy elsewhere copies, so a key
+// that occurs twice in one location keeps all its hits. An empty key never
 // matches.
 export const withoutCopies = <Hit>(
   hits: ReadonlyArray<Hit>,
   keyOf: (hit: Hit) => string,
   locationOf: (hit: Hit) => string,
 ): ReadonlyArray<Hit> => {
-  const seenPerLocation = new Map<string, number>();
-  const keptPerKey = new Map<string, number>();
+  const seenPerLocation = new Set<string>();
+  const ambiguousKeys = new Set<string>();
+  for (const hit of hits) {
+    const key = keyOf(hit);
+    const locationKey = JSON.stringify([key, locationOf(hit)]);
+    if (seenPerLocation.has(locationKey)) {
+      ambiguousKeys.add(key);
+    }
+    seenPerLocation.add(locationKey);
+  }
+  const keptKeys = new Set<string>();
   return hits.filter((hit) => {
     const key = keyOf(hit);
-    if (key === '') {
+    if (key === '' || ambiguousKeys.has(key)) {
       return true;
     }
-    const locationKey = JSON.stringify([key, locationOf(hit)]);
-    const seen = (seenPerLocation.get(locationKey) ?? 0) + 1;
-    seenPerLocation.set(locationKey, seen);
-    const kept = keptPerKey.get(key) ?? 0;
-    if (seen <= kept) {
+    if (keptKeys.has(key)) {
       return false;
     }
-    keptPerKey.set(key, kept + 1);
+    keptKeys.add(key);
     return true;
   });
 };

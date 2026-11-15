@@ -28,7 +28,7 @@ describe('searchMailboxes with identical headers', () => {
     );
   const sentAt = '2026-11-14T12:00:00Z';
 
-  it('keeps two messages of one folder when another folder holds a copy', async () => {
+  it('keeps every message of one folder that shares headers with a copy elsewhere', async () => {
     const hits = await searchInboxAndArchive(
       [
         message(10, '2026-11-14T12:00:00Z', '<reused@example.com>', { sentAt }),
@@ -37,9 +37,11 @@ describe('searchMailboxes with identical headers', () => {
       [message(12, '2026-11-16T12:00:00Z', '<reused@example.com>', { sentAt })],
     );
 
-    // Archive uid 12 stands for one of the INBOX messages.
+    // Archive uid 12 copies one of the INBOX messages, but nothing tells which,
+    // so dropping either could hide the other.
     expect(hits.map(({ hit: { folder, uid } }) => ({ folder, uid }))).toEqual([
       { folder: 'Archive', uid: 12 },
+      { folder: 'INBOX', uid: 11 },
       { folder: 'INBOX', uid: 10 },
     ]);
   });
