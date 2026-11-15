@@ -2,14 +2,20 @@
 #
 # This keeps local env files, decrypted secrets, dependencies and build output
 # out of the package when Nix evaluates it from a working tree. It can't keep
-# them out of the Nix store for a path: flake, which copies the whole directory
-# into the store before this runs. A git flake, such as `nix build .` in a
-# checkout, copies only tracked files.
+# them out of the Nix store for a path: flake, such as `nix build path:.`,
+# which copies the whole directory, ignored files included, into the store
+# before this runs. A git flake, such as `nix build .` in a checkout, copies
+# only tracked files.
 #
 # Evaluation fails on a .gitignore line that this can't match exactly as git
 # does, such as one with a backslash, a character class, ** inside a name, or
 # ** twice in a row.
-# package-source-check.nix compares the result with git.
+#
+# A repository that packages its CLI in nix/package.nix builds it from
+# `import ./package-source.nix { inherit lib; } ../.` and exposes
+# package-source-check.nix, which compares the result with git, as
+# `checks.<system>.package-source` with the package's src. The Standards
+# workflow builds that check whenever nix/package.nix exists.
 { lib }:
 let
   parentOf =

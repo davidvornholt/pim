@@ -32,7 +32,7 @@ jobs:
         uses: cachix/install-nix-action@v31
 
       - name: Build pim
-        run: nix build .#default .#checks.x86_64-linux.package-source -L
+        run: nix build .#default -L
 
       - name: Check the binary and skills
         run: |

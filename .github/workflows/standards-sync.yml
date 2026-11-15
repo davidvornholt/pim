@@ -14,6 +14,11 @@ name: Standards sync
 #   { "ref": "v0.7.0" }    tag, branch, or full commit sha to sync from
 #                          instead of main. The CLI reads the same file, so a
 #                          local `bun standards sync` obeys the same pin.
+#   { "payload": "core" }  receive only the language-neutral standards, for a
+#                          repository that isn't a Bun workspace. This
+#                          workflow then runs the CLI from the upstream
+#                          source it syncs. The default, "bun", adds the Bun
+#                          workspace standards.
 
 on:
   schedule:
@@ -39,6 +44,7 @@ jobs:
     timeout-minutes: 30
     outputs:
       auto-sync: ${{ steps.read.outputs.auto-sync }}
+      payload: ${{ steps.read.outputs.payload }}
       present: ${{ steps.read.outputs.present }}
       ref: ${{ steps.read.outputs.ref }}
     steps:
@@ -55,8 +61,9 @@ jobs:
           if [ -f sync-standards.local.json ]; then
             if ! jq -e '
               type == "object"
-              and ((keys - ["autoSync", "ref"]) | length == 0)
+              and ((keys - ["autoSync", "payload", "ref"]) | length == 0)
               and ((has("autoSync") | not) or (.autoSync | type == "boolean"))
+              and ((has("payload") | not) or .payload == "core" or .payload == "bun")
               and (
                 (has("ref") | not)
                 or (
@@ -67,19 +74,22 @@ jobs:
                 )
               )
             ' sync-standards.local.json > /dev/null; then
-              echo "::error::sync-standards.local.json must be an object with only an optional boolean autoSync and optional non-empty single-line string ref"
+              echo "::error::sync-standards.local.json must be an object with only an optional boolean autoSync, an optional payload of \"core\" or \"bun\", and an optional non-empty single-line string ref"
               exit 1
             fi
             auto_sync=$(jq -r 'if has("autoSync") then .autoSync else true end' sync-standards.local.json)
+            payload=$(jq -r 'if has("payload") then .payload else "bun" end' sync-standards.local.json)
             ref=$(jq -r 'if has("ref") then .ref else "" end' sync-standards.local.json)
             present=true
           else
             auto_sync=true
+            payload=bun
             ref=
             present=false
           fi
           {
             echo "auto-sync=$auto_sync"
+            echo "payload=$payload"
             echo "present=$present"
             echo "ref=$ref"
           } >> "$GITHUB_OUTPUT"
@@ -104,21 +114,67 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      # A Bun consumer runs the standards CLI its lockfile pins. Any other
+      # consumer has no installed CLI, so it runs the CLI from the standards
+      # commit this run syncs from, and the CLI always matches the content it
+      # mirrors. Resolve a branch or tag once: if it moved between this fetch
+      # and the sync, an older CLI would mirror newer content.
+      - name: Fetch trusted standards CLI source
+        id: standards-source
+        if: needs.policy.outputs.payload == 'core'
+        env:
+          SYNC_POLICY_REF: ${{ needs.policy.outputs.ref }}
+        run: |
+          upstream="$(jq -er '.upstream | strings' sync-standards.json)" || upstream=
+          repository="${upstream#github:}"
+          if [[ ! "$upstream" =~ ^github:[A-Za-z0-9-]+/[A-Za-z0-9_.-]+$ ]] || [[ "$repository" == */. || "$repository" == */.. ]]; then
+            echo "::error::sync-standards.json must name a github:owner/repo upstream to fetch the standards CLI from"
+            exit 1
+          fi
+          url="https://github.com/$repository.git"
+          if [ -z "$SYNC_POLICY_REF" ]; then
+            ref=HEAD
+          elif [[ "$SYNC_POLICY_REF" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]]; then
+            ref="$SYNC_POLICY_REF"
+          else
+            echo "::error::The sync policy ref $SYNC_POLICY_REF can't be fetched as a branch, tag, or commit"
+            exit 1
+          fi
+          git() { command git -c core.hooksPath=/dev/null -c core.fsmonitor=false "$@"; }
+          source=$(mktemp -d "$RUNNER_TEMP/standards-source.XXXXXX")
+          git init --quiet "$source"
+          git -C "$source" fetch --quiet --depth=1 --no-tags -- "$url" "$ref"
+          rev=$(git -C "$source" rev-parse --verify 'FETCH_HEAD^{commit}')
+          git -C "$source" checkout --quiet --detach "$rev"
+          if ! package_manager="$(jq -er '.packageManager | select(type == "string" and test("^bun@(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"))' "$source/package.json")"; then
+            echo "::error::The standards package.json at $rev must pin an exact bun@x.y.z packageManager"
+            exit 1
+          fi
+          echo "bun-version=${package_manager#bun@}" >> "$GITHUB_OUTPUT"
+          {
+            echo "STANDARDS_SYNC_REV=$rev"
+            echo "STANDARDS_SYNC_SOURCE=$source"
+          } >> "$GITHUB_ENV"
+
+      # The core payload runs the CLI under the Bun its own source declares.
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.3
+          bun-version: ${{ steps.standards-source.outputs.bun-version || '1.4.3' }}
 
       - name: Install dependencies
+        if: needs.policy.outputs.payload == 'bun'
         run: bun install --frozen-lockfile
 
       # A consumer can receive this canonical workflow before upgrading its
-      # repo-owned package manifest. Fail before sync instead of letting an
-      # older CLI mirror canonical files without enforcing their lock-backed
-      # managed-file contract.
+      # repo-owned package manifest. Fail before sync with an upgrade message
+      # instead of letting an older CLI fail on the payload manifest (before
+      # 0.34.0) or on the one-file Dependabot config (0.34.0) with a message
+      # that doesn't say to upgrade.
       - name: Require compatible standards CLI
+        if: needs.policy.outputs.payload == 'bun'
         env:
-          MINIMUM_STANDARDS_VERSION: "0.21.0"
+          MINIMUM_STANDARDS_VERSION: "0.35.0"
         run: |
           package_path=node_modules/@davidvornholt/standards/package.json
           installed_version=$(jq -er '.version | select(type == "string")' "$package_path")
@@ -132,14 +188,26 @@ jobs:
             exit 1
           fi
 
-      # Preserve the installed CLI before checking out a reusable branch. That
-      # branch can change package scripts, Bun configuration, and dependencies.
+      # Preserve the CLI before checking out a reusable branch. That branch can
+      # change package scripts, Bun configuration, and dependencies. Without a
+      # Bun workspace, install the CLI's production dependencies into the
+      # fetched standards source, outside the workspace, from its own lockfile.
       - name: Preserve trusted sync runtime
+        env:
+          SYNC_PAYLOAD: ${{ needs.policy.outputs.payload }}
         run: |
           runtime=$(mktemp -d "$RUNNER_TEMP/standards-sync.XXXXXX")
-          # Bun isolated packages resolve dependencies through their real store
-          # paths. Keep that internal symlink graph in the independent copy.
-          cp -a node_modules "$runtime/node_modules"
+          if [ "$SYNC_PAYLOAD" = core ]; then
+            (
+              cd "$STANDARDS_SYNC_SOURCE"
+              bun install --frozen-lockfile --filter @davidvornholt/standards --production --ignore-scripts
+            )
+          else
+            # Bun isolated packages resolve dependencies through their real
+            # store paths. Keep that internal symlink graph in the independent
+            # copy.
+            cp -a node_modules "$runtime/node_modules"
+          fi
           cp sync-standards.json "$runtime/sync-standards.json"
           if [ -f sync-standards.local.json ]; then
             jq -cS . sync-standards.local.json > "$runtime/policy.json"
@@ -294,6 +362,7 @@ jobs:
       # engine and fetched canonical content never receive them.
       - name: Sync canonical files from upstream
         env:
+          SYNC_PAYLOAD: ${{ needs.policy.outputs.payload }}
           SYNC_POLICY_REF: ${{ needs.policy.outputs.ref }}
         run: |
           trusted_source="$(jq -er '.upstream | strings | select(length > 0)' "$STANDARDS_SYNC_RUNTIME/sync-standards.json")"
@@ -308,11 +377,17 @@ jobs:
             exit 1
           fi
           cd "$STANDARDS_SYNC_RUNTIME"
-          cli=node_modules/@davidvornholt/standards/src/cli.ts
-          if [ -n "$SYNC_POLICY_REF" ]; then
-            bun --no-env-file "$cli" sync --from "$trusted_source" --dir "$GITHUB_WORKSPACE" --ref "$SYNC_POLICY_REF"
+          if [ "$SYNC_PAYLOAD" = core ]; then
+            cli=(bun --no-env-file "$STANDARDS_SYNC_SOURCE/packages/standards-cli/src/cli.ts")
+            ref="$STANDARDS_SYNC_REV"
           else
-            bun --no-env-file "$cli" sync --from "$trusted_source" --dir "$GITHUB_WORKSPACE"
+            cli=(bun --no-env-file node_modules/@davidvornholt/standards/src/cli.ts)
+            ref="$SYNC_POLICY_REF"
+          fi
+          if [ -n "$ref" ]; then
+            "${cli[@]}" sync --from "$trusted_source" --dir "$GITHUB_WORKSPACE" --ref "$ref"
+          else
+            "${cli[@]}" sync --from "$trusted_source" --dir "$GITHUB_WORKSPACE"
           fi
 
       # Canonical package manifests can change dependency ranges after the
@@ -322,6 +397,7 @@ jobs:
       # only as `--config=<path>`: a separate path argument becomes a package
       # to add, and the branch's own bunfig.toml loads instead.
       - name: Refresh consumer lockfile
+        if: needs.policy.outputs.payload == 'bun'
         run: bun install --lockfile-only --ignore-scripts --no-env-file --config="$STANDARDS_SYNC_RUNTIME/bunfig.toml"
 
       - name: Detect mirror changes
