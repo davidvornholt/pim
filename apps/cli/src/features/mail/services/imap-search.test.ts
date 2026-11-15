@@ -1,100 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 import { Effect } from 'effect';
-import type {
-  FetchMessageObject,
-  FetchQueryObject,
-  ImapFlow,
-  ListResponse,
-} from 'imapflow';
+import type { ImapFlow, ListResponse } from 'imapflow';
 import { searchMailboxes } from './imap-search';
-
-type MailboxMessages = ReadonlyMap<string, ReadonlyArray<FetchMessageObject>>;
-
-const listedFolder = (path: string, specialUse?: string): ListResponse => ({
-  path,
-  pathAsListed: path,
-  name: path,
-  delimiter: '/',
-  parent: [],
-  parentPath: '',
-  flags: new Set(),
-  specialUse,
-  listed: true,
-  subscribed: true,
-});
-
-const uidsInSet = (set: string): ReadonlySet<number> =>
-  new Set(
-    set.split(',').flatMap((range) => {
-      const [first = 0, last = first] = range.split(':').map(Number);
-      return Array.from(
-        { length: last - first + 1 },
-        (_, index) => first + index,
-      );
-    }),
-  );
-
-const fetchedItems = (query: FetchQueryObject): string =>
-  Object.keys(query).join(',');
-
-const fakeClient = (
-  folders: ReadonlyArray<ListResponse>,
-  messages: MailboxMessages,
-  events: Array<string>,
-): ImapFlow => {
-  let selectedFolder = '';
-  return {
-    list: () => {
-      events.push('list');
-      return Promise.resolve([...folders]);
-    },
-    getMailboxLock: (folder: string) => {
-      selectedFolder = folder;
-      events.push(`lock:${folder}`);
-      return Promise.resolve({
-        release: () => events.push(`release:${folder}`),
-      });
-    },
-    mailbox: { uidValidity: 111n },
-    search: () =>
-      Promise.resolve(
-        (messages.get(selectedFolder) ?? []).map(({ uid }) => uid),
-      ),
-    fetch: (set: string, query: FetchQueryObject) => {
-      events.push(`fetch:${set} ${fetchedItems(query)}`);
-      return (async function* () {
-        await Promise.resolve();
-        const selectedUids = uidsInSet(set);
-        for (const { envelope, ...message } of messages.get(selectedFolder) ??
-          []) {
-          if (selectedUids.has(message.uid)) {
-            yield query.envelope === true ? { ...message, envelope } : message;
-          }
-        }
-      })();
-    },
-  } as unknown as ImapFlow;
-};
+import { fakeClient, listedFolder, message } from './imap-search.fixture';
 
 const oldUid = 3;
 const oldestUid = 4;
-
-const message = (
-  uid: number,
-  date: string,
-  messageId: string,
-  emailId?: string,
-): FetchMessageObject => ({
-  seq: uid,
-  uid,
-  emailId,
-  internalDate: new Date(date),
-  envelope: {
-    date: new Date(date),
-    messageId,
-    subject: messageId,
-  },
-});
 
 describe('searchMailboxes in one folder', () => {
   it('searches an exact folder without listing mailboxes', async () => {
@@ -187,7 +98,11 @@ describe('searchMailboxes across folders', () => {
         ['Archive', [message(2, '2026-07-14T08:00:00Z', '<new@example.com>')]],
         [
           'Sent',
-          [message(sentUid, '2026-07-13T08:00:00Z', '<same@example.com>')],
+          [
+            message(sentUid, '2026-07-13T08:00:00Z', '<same@example.com>', {
+              sentAt: '2026-07-12T08:00:00Z',
+            }),
+          ],
         ],
       ]),
       events,
@@ -224,23 +139,17 @@ describe('searchMailboxes across folders', () => {
         [
           'INBOX',
           [
-            message(
-              1,
-              '2026-07-15T08:00:00Z',
-              '<same@example.com>',
-              'ObjectId',
-            ),
+            message(1, '2026-07-15T08:00:00Z', '<same@example.com>', {
+              emailId: 'ObjectId',
+            }),
           ],
         ],
         [
           'Archive',
           [
-            message(
-              2,
-              '2026-07-16T08:00:00Z',
-              '<same@example.com>',
-              'objectid',
-            ),
+            message(2, '2026-07-16T08:00:00Z', '<same@example.com>', {
+              emailId: 'objectid',
+            }),
           ],
         ],
       ]),

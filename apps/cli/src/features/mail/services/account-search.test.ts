@@ -23,7 +23,7 @@ describe('searchAllAccounts', () => {
                 '<duplicate@example.com>',
                 '2026-07-14T08:00:00Z',
               ),
-              mailboxDeduplicationId: 'server-one-id',
+              mailboxCopyKey: 'server-one-id',
             },
             mailboxHit(2, '<older@example.com>', '2026-07-13T08:00:00Z'),
           ]);
@@ -35,7 +35,7 @@ describe('searchAllAccounts', () => {
                 '<duplicate@example.com>',
                 '2026-07-15T08:00:00Z',
               ),
-              mailboxDeduplicationId: 'server-two-id',
+              mailboxCopyKey: 'server-two-id',
             },
             mailboxHit(
               newestUid,
@@ -56,7 +56,7 @@ describe('searchAllAccounts', () => {
     const result = await Effect.runPromise(
       searchAllAccounts(
         ['first@example.com', 'second@example.com', 'unavailable@example.com'],
-        searchOptions,
+        { ...searchOptions, limit: 3 },
         searchMailbox,
       ),
     );
@@ -71,6 +71,10 @@ describe('searchAllAccounts', () => {
       {
         account: 'second@example.com',
         subject: '<duplicate@example.com>',
+      },
+      {
+        account: 'first@example.com',
+        subject: '<older@example.com>',
       },
     ]);
     expect(result.failures).toEqual([
@@ -126,6 +130,78 @@ describe('searchAllAccounts', () => {
     expect(result.message).toContain(
       'second@example.com: No stored credentials for second@example.com',
     );
+  });
+});
+
+describe('searchAllAccounts with identical headers', () => {
+  it('keeps every message of one account that shares headers with a copy elsewhere', async () => {
+    const result = await Effect.runPromise(
+      searchAllAccounts(
+        ['first@example.com', 'second@example.com'],
+        { ...searchOptions, limit: 20 },
+        (account) =>
+          Effect.succeed(
+            account === 'first@example.com'
+              ? [
+                  mailboxHit(
+                    11,
+                    '<reused@example.com>',
+                    '2026-11-15T12:00:00Z',
+                  ),
+                  mailboxHit(
+                    10,
+                    '<reused@example.com>',
+                    '2026-11-14T12:00:00Z',
+                  ),
+                ]
+              : [
+                  mailboxHit(
+                    12,
+                    '<reused@example.com>',
+                    '2026-11-16T12:00:00Z',
+                  ),
+                ],
+          ),
+      ),
+    );
+
+    // uid 12 copies one of first@example.com's messages, but nothing tells
+    // which, so dropping either could hide the other.
+    expect(result.hits.map(({ account, uid }) => ({ account, uid }))).toEqual([
+      { account: 'second@example.com', uid: 12 },
+      { account: 'first@example.com', uid: 11 },
+      { account: 'first@example.com', uid: 10 },
+    ]);
+  });
+});
+
+describe('searchAllAccounts with a reused Message-ID', () => {
+  it('keeps different messages of one account that share a Message-ID', async () => {
+    const result = await Effect.runPromise(
+      searchAllAccounts(
+        ['first@example.com', 'second@example.com'],
+        { ...searchOptions, limit: 20 },
+        (account) =>
+          Effect.succeed(
+            account === 'first@example.com'
+              ? [
+                  mailboxHit(
+                    11,
+                    '<reused@example.com>',
+                    '2026-11-15T12:00:00Z',
+                  ),
+                  mailboxHit(
+                    10,
+                    '<reused@example.com>',
+                    '2026-11-14T12:00:00Z',
+                  ),
+                ]
+              : [],
+          ),
+      ),
+    );
+
+    expect(result.hits.map(({ uid }) => uid)).toEqual([11, 10]);
   });
 });
 
