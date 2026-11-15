@@ -1,102 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 import { Effect } from 'effect';
-import type {
-  FetchMessageObject,
-  FetchQueryObject,
-  ImapFlow,
-  ListResponse,
-} from 'imapflow';
+import type { ImapFlow, ListResponse } from 'imapflow';
 import { searchMailboxes } from './imap-search';
-
-type MailboxMessages = ReadonlyMap<string, ReadonlyArray<FetchMessageObject>>;
-
-const listedFolder = (path: string, specialUse?: string): ListResponse => ({
-  path,
-  pathAsListed: path,
-  name: path,
-  delimiter: '/',
-  parent: [],
-  parentPath: '',
-  flags: new Set(),
-  specialUse,
-  listed: true,
-  subscribed: true,
-});
-
-const uidsInSet = (set: string): ReadonlySet<number> =>
-  new Set(
-    set.split(',').flatMap((range) => {
-      const [first = 0, last = first] = range.split(':').map(Number);
-      return Array.from(
-        { length: last - first + 1 },
-        (_, index) => first + index,
-      );
-    }),
-  );
-
-const fetchedItems = (query: FetchQueryObject): string =>
-  Object.keys(query).join(',');
-
-const fakeClient = (
-  folders: ReadonlyArray<ListResponse>,
-  messages: MailboxMessages,
-  events: Array<string>,
-): ImapFlow => {
-  let selectedFolder = '';
-  return {
-    list: () => {
-      events.push('list');
-      return Promise.resolve([...folders]);
-    },
-    getMailboxLock: (folder: string) => {
-      selectedFolder = folder;
-      events.push(`lock:${folder}`);
-      return Promise.resolve({
-        release: () => events.push(`release:${folder}`),
-      });
-    },
-    mailbox: { uidValidity: 111n },
-    search: () =>
-      Promise.resolve(
-        (messages.get(selectedFolder) ?? []).map(({ uid }) => uid),
-      ),
-    fetch: (set: string, query: FetchQueryObject) => {
-      events.push(`fetch:${set} ${fetchedItems(query)}`);
-      return (async function* () {
-        await Promise.resolve();
-        const selectedUids = uidsInSet(set);
-        for (const { envelope, ...message } of messages.get(selectedFolder) ??
-          []) {
-          if (selectedUids.has(message.uid)) {
-            yield query.envelope === true ? { ...message, envelope } : message;
-          }
-        }
-      })();
-    },
-  } as unknown as ImapFlow;
-};
+import { fakeClient, listedFolder, message } from './imap-search.fixture';
 
 const oldUid = 3;
 const oldestUid = 4;
-
-// date is when the message arrived; sentAt is its Date header, which copies
-// in other folders share.
-const message = (
-  uid: number,
-  date: string,
-  messageId: string,
-  { emailId, sentAt = date }: { emailId?: string; sentAt?: string } = {},
-): FetchMessageObject => ({
-  seq: uid,
-  uid,
-  emailId,
-  internalDate: new Date(date),
-  envelope: {
-    date: new Date(sentAt),
-    messageId,
-    subject: messageId,
-  },
-});
 
 describe('searchMailboxes in one folder', () => {
   it('searches an exact folder without listing mailboxes', async () => {
@@ -256,47 +165,6 @@ describe('searchMailboxes across folders', () => {
     );
 
     expect(hits.map(({ hit: { uid } }) => uid)).toEqual([2, 1]);
-  });
-});
-
-describe('searchMailboxes with a reused Message-ID', () => {
-  it('keeps different messages in one folder that share a Message-ID', async () => {
-    // Some senders reuse one Message-ID for every message, as for invoices.
-    const client = fakeClient(
-      [listedFolder('INBOX', '\\Inbox'), listedFolder('Archive', '\\Archive')],
-      new Map([
-        [
-          'INBOX',
-          [
-            message(10, '2026-11-14T12:00:00Z', '<reused@example.com>'),
-            message(11, '2026-11-15T12:00:00Z', '<reused@example.com>'),
-          ],
-        ],
-        [
-          'Archive',
-          [
-            message(12, '2026-11-16T12:00:00Z', '<reused@example.com>', {
-              sentAt: '2026-11-14T12:00:00Z',
-            }),
-          ],
-        ],
-      ]),
-      [],
-    );
-
-    const hits = await Effect.runPromise(
-      searchMailboxes(
-        client,
-        { scope: 'all', query: 'invoice', limit: 20 },
-        false,
-      ),
-    );
-
-    // Archive uid 12 is a copy of INBOX uid 10, so only one of them is listed.
-    expect(hits.map(({ hit: { folder, uid } }) => ({ folder, uid }))).toEqual([
-      { folder: 'Archive', uid: 12 },
-      { folder: 'INBOX', uid: 11 },
-    ]);
   });
 });
 

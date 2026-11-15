@@ -16,26 +16,31 @@ export const copyFingerprint = ({
   return id === '' ? '' : JSON.stringify([id, sentAt, subject, from]);
 };
 
-// Drops hits whose key matches a hit already kept from another location, such
-// as another folder. Hits from one location are distinct messages, so they
-// stay even when their keys match. An empty key never matches.
+// Drops hits that are copies of hits from another location, such as another
+// folder. Hits from one location are distinct messages even when their keys
+// match, so each key keeps as many hits as the location that has the most of
+// them, and a copy elsewhere stands in for one of those. An empty key never
+// matches.
 export const withoutCopies = <Hit>(
   hits: ReadonlyArray<Hit>,
   keyOf: (hit: Hit) => string,
   locationOf: (hit: Hit) => string,
 ): ReadonlyArray<Hit> => {
-  const firstLocations = new Map<string, string>();
+  const seenPerLocation = new Map<string, number>();
+  const keptPerKey = new Map<string, number>();
   return hits.filter((hit) => {
     const key = keyOf(hit);
     if (key === '') {
       return true;
     }
-    const location = locationOf(hit);
-    const firstLocation = firstLocations.get(key);
-    if (firstLocation === undefined) {
-      firstLocations.set(key, location);
-      return true;
+    const locationKey = JSON.stringify([key, locationOf(hit)]);
+    const seen = (seenPerLocation.get(locationKey) ?? 0) + 1;
+    seenPerLocation.set(locationKey, seen);
+    const kept = keptPerKey.get(key) ?? 0;
+    if (seen <= kept) {
+      return false;
     }
-    return firstLocation === location;
+    keptPerKey.set(key, kept + 1);
+    return true;
   });
 };

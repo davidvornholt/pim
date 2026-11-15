@@ -56,7 +56,7 @@ describe('searchAllAccounts', () => {
     const result = await Effect.runPromise(
       searchAllAccounts(
         ['first@example.com', 'second@example.com', 'unavailable@example.com'],
-        searchOptions,
+        { ...searchOptions, limit: 3 },
         searchMailbox,
       ),
     );
@@ -71,6 +71,10 @@ describe('searchAllAccounts', () => {
       {
         account: 'second@example.com',
         subject: '<duplicate@example.com>',
+      },
+      {
+        account: 'first@example.com',
+        subject: '<older@example.com>',
       },
     ]);
     expect(result.failures).toEqual([
@@ -126,6 +130,46 @@ describe('searchAllAccounts', () => {
     expect(result.message).toContain(
       'second@example.com: No stored credentials for second@example.com',
     );
+  });
+});
+
+describe('searchAllAccounts with identical headers', () => {
+  it('keeps two messages of one account when another account holds a copy', async () => {
+    const result = await Effect.runPromise(
+      searchAllAccounts(
+        ['first@example.com', 'second@example.com'],
+        { ...searchOptions, limit: 20 },
+        (account) =>
+          Effect.succeed(
+            account === 'first@example.com'
+              ? [
+                  mailboxHit(
+                    11,
+                    '<reused@example.com>',
+                    '2026-11-15T12:00:00Z',
+                  ),
+                  mailboxHit(
+                    10,
+                    '<reused@example.com>',
+                    '2026-11-14T12:00:00Z',
+                  ),
+                ]
+              : [
+                  mailboxHit(
+                    12,
+                    '<reused@example.com>',
+                    '2026-11-16T12:00:00Z',
+                  ),
+                ],
+          ),
+      ),
+    );
+
+    // second@example.com's uid 12 stands for one of first@example.com's.
+    expect(result.hits.map(({ account, uid }) => ({ account, uid }))).toEqual([
+      { account: 'second@example.com', uid: 12 },
+      { account: 'first@example.com', uid: 10 },
+    ]);
   });
 });
 
