@@ -7,7 +7,12 @@ import {
   MessageNotFoundError,
   type StaleUidError,
 } from '../errors/errors';
-import type { FolderInfo, FullMessage, MessageHandle } from '../schemas/mail';
+import type {
+  FolderInfo,
+  FullMessage,
+  MessageHandle,
+  ReadMessage,
+} from '../schemas/mail';
 import { listAttachments } from './attachment-metadata';
 import { safeAttributionText } from './attribution-safety';
 import { lockMessageFolder } from './mailbox-lock';
@@ -168,10 +173,15 @@ export const readMessage = (
   client: ImapFlow,
   handle: MessageHandle,
 ): Effect.Effect<
-  FullMessage,
+  ReadMessage,
   ImapError | MessageNotFoundError | StaleUidError
 > =>
   Effect.gen(function* () {
     yield* lockMessageFolder(client, handle);
-    return yield* readMessageContents(client, handle.folder, handle.uid);
+    const message = yield* readMessageContents(
+      client,
+      handle.folder,
+      handle.uid,
+    );
+    return { ...message, uidValidity: handle.uidValidity };
   }).pipe(Effect.scoped);

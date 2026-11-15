@@ -52,6 +52,20 @@ afterEach(() => {
   setSystemTime();
 });
 
+describe('readMessage handle', () => {
+  it('prints the uidValidity that reads the message again', async () => {
+    const message = await readSource(
+      sourceFor(['Tue, 14 Jul 2026 08:00:00 +0000']),
+    );
+
+    expect({
+      folder: message.folder,
+      uid: message.uid,
+      uidValidity: message.uidValidity,
+    }).toEqual(inboxMessage);
+  });
+});
+
 describe('readMessage reply attribution dates', () => {
   it('carries raw Date semantics from MIME parsing into reply attribution', async () => {
     setSystemTime(frozenTime);

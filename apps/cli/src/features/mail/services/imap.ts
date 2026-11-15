@@ -12,12 +12,12 @@ import type {
   DraftHandle,
   DraftInput,
   DraftLocation,
-  FullMessage,
   MarkMessagesResult,
   MessageBatch,
   MessageHandle,
   MoveDestination,
   MoveMessagesResult,
+  ReadMessage,
   SearchOptions,
   SearchOptionsInput,
   SearchResult,
@@ -174,7 +174,7 @@ const makeImap = Effect.gen(function* () {
     read: (
       email: string,
       handle: MessageHandle,
-    ): Effect.Effect<FullMessage, MailError> =>
+    ): Effect.Effect<ReadMessage, MailError> =>
       withClient(email, (client) => readMessage(client, handle)),
     readAttachment: (
       email: string,

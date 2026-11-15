@@ -68,6 +68,11 @@ export type FullMessage = {
   readonly attachments: ReadonlyArray<MessageAttachment>;
 };
 
+// A message as "pim mail read" prints it, with the handle that reads it again.
+export type ReadMessage = FullMessage & {
+  readonly uidValidity: string;
+};
+
 export type MessageThread = Pick<
   FullMessage,
   'messageId' | 'inReplyTo' | 'references'
