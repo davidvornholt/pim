@@ -5,9 +5,9 @@ import {
   ImapError,
   MessageNotFoundError,
 } from '../errors/errors';
-import type { AttachmentContent } from '../schemas/mail';
+import type { AttachmentContent, MessageHandle } from '../schemas/mail';
 import { findAttachment } from './attachment-metadata';
-import { lockMailbox } from './mailbox-lock';
+import { lockMessageFolder } from './mailbox-lock';
 
 const toBuffer = (chunk: unknown): Effect.Effect<Buffer, ImapError> => {
   if (typeof chunk === 'string' || chunk instanceof Uint8Array) {
@@ -36,12 +36,12 @@ const contentTypeOr = (value: unknown, fallback: string): string =>
 
 export const readAttachment = (
   client: ImapFlow,
-  folder: string,
-  uid: number,
+  handle: MessageHandle,
   part: string,
 ) =>
   Effect.gen(function* () {
-    yield* lockMailbox(client, folder);
+    const { folder, uid } = handle;
+    yield* lockMessageFolder(client, handle);
     const message = yield* Effect.tryPromise({
       try: () =>
         client.fetchOne(

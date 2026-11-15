@@ -15,6 +15,7 @@ import type {
   FullMessage,
   MarkMessagesResult,
   MessageBatch,
+  MessageHandle,
   MoveDestination,
   MoveMessagesResult,
   SearchOptions,
@@ -172,25 +173,20 @@ const makeImap = Effect.gen(function* () {
       }),
     read: (
       email: string,
-      folder: string,
-      uid: number,
+      handle: MessageHandle,
     ): Effect.Effect<FullMessage, MailError> =>
-      withClient(email, (client) => readMessage(client, folder, uid)),
+      withClient(email, (client) => readMessage(client, handle)),
     readAttachment: (
       email: string,
-      folder: string,
-      uid: number,
+      handle: MessageHandle,
       part: string,
     ): Effect.Effect<AttachmentContent, MailError> =>
-      withClient(email, (client) => readAttachment(client, folder, uid, part)),
+      withClient(email, (client) => readAttachment(client, handle, part)),
     readCalendar: (
       email: string,
-      folder: string,
-      uid: number,
+      handle: MessageHandle,
     ): Effect.Effect<CalendarMessage, MailError> =>
-      withClient(email, (client) =>
-        readCalendarMessage(client, email, folder, uid),
-      ),
+      withClient(email, (client) => readCalendarMessage(client, email, handle)),
     moveMessages: (
       batch: MessageBatch,
       destination: MoveDestination,

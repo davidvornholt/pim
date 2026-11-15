@@ -98,9 +98,12 @@ export type AttachmentContent = MessageAttachment & {
   readonly content: Uint8Array;
 };
 
+// A message from a search hit. uidValidity guards against a mailbox rebuild
+// reassigning the uid to a different message.
 export type MessageHandle = {
   readonly folder: string;
   readonly uid: number;
+  readonly uidValidity: string;
 };
 
 export type DraftInput = {

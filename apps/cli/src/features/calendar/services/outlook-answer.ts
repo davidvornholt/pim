@@ -90,7 +90,7 @@ export const answerOutlookMeeting = (
       (account.dav !== undefined && isCalDavHref(answer.href))
     ) {
       return yield* new InvitationError({
-        message: `--href answers a meeting in an Outlook calendar, and ${answer.href} is none of ${account.email}. Answer the invitation email with --folder and --uid instead`,
+        message: `--href answers a meeting in an Outlook calendar, and ${answer.href} is none of ${account.email}. Answer the invitation email with --folder, --uid, and --uid-validity instead`,
       });
     }
     const graph = yield* Graph;

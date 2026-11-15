@@ -117,8 +117,14 @@ describe('message attachment metadata', () => {
 
   it('adds attachment metadata when reading a message', async () => {
     const messageUid = 42;
+    const inboxMessage = {
+      folder: 'INBOX',
+      uid: messageUid,
+      uidValidity: '111',
+    };
     let released = false;
     const client = {
+      mailbox: { uidValidity: 111n },
       getMailboxLock: () =>
         Promise.resolve({
           release: () => {
@@ -135,9 +141,7 @@ describe('message attachment metadata', () => {
         }),
     } as unknown as ImapFlow;
 
-    const message = await Effect.runPromise(
-      readMessage(client, 'INBOX', messageUid),
-    );
+    const message = await Effect.runPromise(readMessage(client, inboxMessage));
 
     expect(message.attachments).toEqual(listAttachments(structure));
     expect(released).toBe(true);

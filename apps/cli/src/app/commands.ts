@@ -34,6 +34,7 @@ const messageFlags = {
   account,
   folder: flag.text('path', 'Folder from a search hit'),
   uid: flag.integer('n', 'Message uid from a search hit'),
+  uidValidity: flag.text('id', 'uidValidity from the search hit'),
 } as const;
 
 const selectedAccounts = (only: string | undefined) =>
@@ -208,15 +209,11 @@ const read = defineCommand(
       html: flag.switch('Include the HTML body'),
     },
   },
-  ({ html: includeHtml, ...handle }): CommandEffect =>
+  ({ html: includeHtml, account: requested, ...handle }): CommandEffect =>
     Effect.gen(function* () {
-      const email = yield* configuredEmail(handle.account);
+      const email = yield* configuredEmail(requested);
       const imap = yield* Imap;
-      const { html, ...message } = yield* imap.read(
-        email,
-        handle.folder,
-        handle.uid,
-      );
+      const { html, ...message } = yield* imap.read(email, handle);
       return json({
         account: email,
         ...message,
@@ -246,8 +243,11 @@ const attachment = defineCommand(
       const imap = yield* Imap;
       const file = yield* imap.readAttachment(
         email,
-        values.folder,
-        values.uid,
+        {
+          folder: values.folder,
+          uid: values.uid,
+          uidValidity: values.uidValidity,
+        },
         values.part,
       );
       const path = yield* writeAttachment(file, values.out, values.force);

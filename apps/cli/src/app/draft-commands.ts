@@ -28,7 +28,8 @@ const handleFlags = {
   uid: flag.integer('n', 'Draft uid from the draft handle'),
   uidValidity: flag.text('id', 'uidValidity from the draft handle'),
 } as const;
-// --reply-folder and --reply-uid go together; replyHandle checks the pair.
+// --reply-folder, --reply-uid, and --reply-uid-validity go together;
+// replyHandle checks them.
 const composeFlags = {
   to: flag.text('addresses', 'Recipients, comma-separated'),
   cc: flag.optionalText('addresses', 'Cc recipients, comma-separated'),
@@ -41,10 +42,14 @@ const composeFlags = {
   attach: flag.texts('path', 'File to attach; repeat for more files'),
   replyFolder: flag.optionalText('path', 'Folder of the message to reply to'),
   replyUid: flag.optionalInteger('n', 'Uid of the message to reply to'),
+  replyUidValidity: flag.optionalText(
+    'id',
+    'uidValidity of the message to reply to, from its search hit',
+  ),
 } as const;
 
 const composeDescription =
-  'Reads the plain-text body from stdin. With --reply-folder and --reply-uid, the draft quotes that message (same account) and threads under it; set --subject yourself, such as "Re: <original subject>".';
+  'Reads the plain-text body from stdin. With --reply-folder, --reply-uid, and --reply-uid-validity from a search hit, the draft quotes that message (same account) and threads under it; set --subject yourself, such as "Re: <original subject>".';
 
 const requireFile = (path: string, option: string) =>
   Effect.gen(function* () {
@@ -56,20 +61,25 @@ const requireFile = (path: string, option: string) =>
     }
   });
 
-const replyHandle = (
-  folder: string | undefined,
-  uid: number | undefined,
-): Effect.Effect<MessageHandle | undefined, UsageError> => {
-  if (folder === undefined && uid === undefined) {
+const replyHandle = ({
+  replyFolder: folder,
+  replyUid: uid,
+  replyUidValidity: uidValidity,
+}: FlagValues<typeof composeFlags>): Effect.Effect<
+  MessageHandle | undefined,
+  UsageError
+> => {
+  if (folder === undefined && uid === undefined && uidValidity === undefined) {
     return Effect.succeed(undefined);
   }
-  return folder === undefined || uid === undefined
+  return folder === undefined || uid === undefined || uidValidity === undefined
     ? Effect.fail(
         new UsageError({
-          message: 'pass --reply-folder and --reply-uid together',
+          message:
+            'pass --reply-folder, --reply-uid, and --reply-uid-validity together, from the search hit of the message to reply to',
         }),
       )
-    : Effect.succeed({ folder, uid });
+    : Effect.succeed({ folder, uid, uidValidity });
 };
 
 const readHtmlFile = (path: string) =>
@@ -108,7 +118,7 @@ const draftContent = (
 ): Effect.Effect<DraftInput, UsageError | FileError> =>
   Effect.gen(function* () {
     const { htmlFile, attach } = values;
-    const replySource = yield* replyHandle(values.replyFolder, values.replyUid);
+    const replySource = yield* replyHandle(values);
     yield* Effect.forEach(attach, (path) => requireFile(path, '--attach'));
     const html =
       htmlFile === undefined ? undefined : yield* readHtmlFile(htmlFile);

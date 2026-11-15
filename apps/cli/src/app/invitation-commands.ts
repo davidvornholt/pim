@@ -17,22 +17,24 @@ const messageFlags = {
   account: flag.text('email', 'Account the invitation arrived in'),
   folder: flag.text('path', 'Folder from a search hit'),
   uid: flag.integer('n', 'Message uid from a search hit'),
+  uidValidity: flag.text('id', 'uidValidity from the search hit'),
 } as const;
 
 const receivedInvitation = (values: {
   readonly account: string;
   readonly folder: string;
   readonly uid: number;
+  readonly uidValidity: string;
 }) =>
   Effect.gen(function* () {
     const config = yield* AccountConfig;
     const account = yield* config.getAccount(values.account);
     const imap = yield* Imap;
-    const message = yield* imap.readCalendar(
-      account.email,
-      values.folder,
-      values.uid,
-    );
+    const message = yield* imap.readCalendar(account.email, {
+      folder: values.folder,
+      uid: values.uid,
+      uidValidity: values.uidValidity,
+    });
     const invitation = yield* readInvitation(
       `Message uid ${message.uid} in "${message.folder}"`,
       message.ics,
@@ -102,18 +104,20 @@ const answeredMeeting = (values: {
   readonly href: string | undefined;
   readonly folder: string | undefined;
   readonly uid: number | undefined;
+  readonly uidValidity: string | undefined;
   readonly calendar: string | undefined;
   readonly series: boolean;
 }) => {
-  const { href, folder, uid } = values;
+  const { href, folder, uid, uidValidity } = values;
   if (href !== undefined) {
     return folder === undefined &&
       uid === undefined &&
+      uidValidity === undefined &&
       values.calendar === undefined
       ? Effect.succeed({ _tag: 'Outlook' as const, href })
       : Effect.fail(
           respondUsage(
-            '--href answers an Outlook meeting and takes no --folder, --uid, or --calendar',
+            '--href answers an Outlook meeting and takes no --folder, --uid, --uid-validity, or --calendar',
           ),
         );
   }
@@ -124,13 +128,13 @@ const answeredMeeting = (values: {
       ),
     );
   }
-  return folder === undefined || uid === undefined
+  return folder === undefined || uid === undefined || uidValidity === undefined
     ? Effect.fail(
         respondUsage(
-          'pass --folder and --uid of an invitation email, or --href of an Outlook meeting',
+          'pass --folder, --uid, and --uid-validity of an invitation email, or --href of an Outlook meeting',
         ),
       )
-    : Effect.succeed({ _tag: 'Message' as const, folder, uid });
+    : Effect.succeed({ _tag: 'Message' as const, folder, uid, uidValidity });
 };
 
 const respond = defineCommand(
@@ -138,7 +142,7 @@ const respond = defineCommand(
     name: 'calendar respond',
     summary: 'Answer an invitation',
     description:
-      'Answer a meeting someone else organizes, as the attendee. Outlook puts the invitations of a mailbox Microsoft hosts into its calendar itself: --href answers such a meeting from "pim calendar events", which names one occurrence of a recurring meeting, or with --series its seriesHref from "pim calendar get"; pim keeps the answer in the calendar and makes Microsoft email the organizer only with --notify-organizer. It prints {"reply": "server" or "none", "event"}, without event when Microsoft removed the declined meeting from the calendar. --folder and --uid answer an invitation email (method request). For an account with a dav table whose server sends answers itself (RFC 6638), pim first brings the meeting in the calendar up to date with the invitation as "pim calendar import" does, and then gives the answer there, which makes the server email the organizer; pim does this only with --notify-organizer. An invitation for single occurrences answers only those. It prints {"reply": "server", "event"}, where event.organizer.scheduleStatus tells, when the server reports it, how it delivered the answer (1.x: sent or pending). For an account with only a graph table whose mailbox Microsoft hosts, pim points to --href. For any other account, pim saves the answer as a reply draft to the organizer, with the calendar data their calendar reads, and prints {"reply": "draft", "draft", "to", "subject"}. The user sends the draft from their mail app; pim writes no calendar then.',
+      'Answer a meeting someone else organizes, as the attendee. Outlook puts the invitations of a mailbox Microsoft hosts into its calendar itself: --href answers such a meeting from "pim calendar events", which names one occurrence of a recurring meeting, or with --series its seriesHref from "pim calendar get"; pim keeps the answer in the calendar and makes Microsoft email the organizer only with --notify-organizer. It prints {"reply": "server" or "none", "event"}, without event when Microsoft removed the declined meeting from the calendar. --folder, --uid, and --uid-validity from a search hit answer an invitation email (method request). For an account with a dav table whose server sends answers itself (RFC 6638), pim first brings the meeting in the calendar up to date with the invitation as "pim calendar import" does, and then gives the answer there, which makes the server email the organizer; pim does this only with --notify-organizer. An invitation for single occurrences answers only those. It prints {"reply": "server", "event"}, where event.organizer.scheduleStatus tells, when the server reports it, how it delivered the answer (1.x: sent or pending). For an account with only a graph table whose mailbox Microsoft hosts, pim points to --href. For any other account, pim saves the answer as a reply draft to the organizer, with the calendar data their calendar reads, and prints {"reply": "draft", "draft", "to", "subject"}. The user sends the draft from their mail app; pim writes no calendar then.',
     flags: {
       account: messageFlags.account,
       href: flag.optionalText(
@@ -147,6 +151,10 @@ const respond = defineCommand(
       ),
       folder: flag.optionalText('path', 'Folder of the invitation email'),
       uid: flag.optionalInteger('n', 'Uid of the invitation email'),
+      uidValidity: flag.optionalText(
+        'id',
+        'uidValidity of the invitation email from the search hit',
+      ),
       partstat: flag.text(partstats.join('|'), 'The answer'),
       series: flag.switch(
         'Allow the answer for every occurrence of a recurring Outlook meeting',

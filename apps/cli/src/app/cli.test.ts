@@ -60,7 +60,7 @@ describe('pim cli', () => {
       expect(overview.stdout).toContain('mail draft save');
       const commandHelp = runCli(['mail', 'draft', 'save', '--help']);
       expect(commandHelp.exitCode).toBe(0);
-      expect(commandHelp.stdout).toContain('--reply-uid <n>');
+      expect(commandHelp.stdout).toContain('--reply-uid-validity <id>');
     },
     subprocessTimeoutMs,
   );
@@ -160,6 +160,29 @@ describe('pim cli', () => {
       );
       expect(result.exitCode).toBe(2);
       expect(errorOf(result).message).toBe('the draft body on stdin is empty');
+    },
+    subprocessTimeoutMs,
+  );
+});
+
+describe('pim mail draft replies', () => {
+  it(
+    'rejects a reply without the uidValidity of its source before connecting',
+    () => {
+      const result = runCli(
+        [
+          'mail',
+          'draft',
+          'save',
+          '--account=test@example.com',
+          '--to=x@y.z',
+          '--reply-folder=INBOX',
+          '--reply-uid=42',
+        ],
+        { stdin: 'My answer.\n' },
+      );
+      expect(result.exitCode).toBe(2);
+      expect(errorOf(result).message).toContain('--reply-uid-validity');
     },
     subprocessTimeoutMs,
   );
