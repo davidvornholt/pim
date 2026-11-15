@@ -6,6 +6,7 @@ import { buildReplyContent } from './reply-quote';
 
 const frozenTime = new Date('2031-02-03T04:05:06.000Z');
 const messageUid = 42;
+const inboxMessage = { folder: 'INBOX', uid: messageUid, uidValidity: '111' };
 const replyHtmlLineCount = 3;
 const sourceFor = (
   dates: ReadonlyArray<string>,
@@ -28,10 +29,11 @@ const sourceFor = (
 };
 const readSource = (source: Buffer) => {
   const client = {
+    mailbox: { uidValidity: 111n },
     getMailboxLock: () => Promise.resolve({ release: () => undefined }),
     fetchOne: () => Promise.resolve({ uid: messageUid, source }),
   } as unknown as ImapFlow;
-  return Effect.runPromise(readMessage(client, 'INBOX', messageUid));
+  return Effect.runPromise(readMessage(client, inboxMessage));
 };
 const readDateCases = <
   TestCase extends { readonly dates: ReadonlyArray<string> },
@@ -48,6 +50,20 @@ const readDateCases = <
 
 afterEach(() => {
   setSystemTime();
+});
+
+describe('readMessage handle', () => {
+  it('prints the uidValidity that reads the message again', async () => {
+    const message = await readSource(
+      sourceFor(['Tue, 14 Jul 2026 08:00:00 +0000']),
+    );
+
+    expect({
+      folder: message.folder,
+      uid: message.uid,
+      uidValidity: message.uidValidity,
+    }).toEqual(inboxMessage);
+  });
 });
 
 describe('readMessage reply attribution dates', () => {
@@ -239,6 +255,7 @@ describe('missing IMAP messages', () => {
     async (missing) => {
       let released = false;
       const client = {
+        mailbox: { uidValidity: 111n },
         getMailboxLock: () =>
           Promise.resolve({
             release: () => {
@@ -248,7 +265,7 @@ describe('missing IMAP messages', () => {
         fetchOne: () => Promise.resolve(missing),
       } as unknown as ImapFlow;
       const result = await Effect.runPromise(
-        Effect.result(readMessage(client, 'INBOX', messageUid)),
+        Effect.result(readMessage(client, inboxMessage)),
       );
       expect(result).toMatchObject({
         _tag: 'Failure',
@@ -257,4 +274,23 @@ describe('missing IMAP messages', () => {
       expect(released).toBe(true);
     },
   );
+});
+
+describe('stale message handles', () => {
+  it('refuses to read a message after its folder was rebuilt', async () => {
+    let fetched = false;
+    const client = {
+      mailbox: { uidValidity: 222n },
+      getMailboxLock: () => Promise.resolve({ release: () => undefined }),
+      fetchOne: () => {
+        fetched = true;
+        return Promise.resolve(false);
+      },
+    } as unknown as ImapFlow;
+    const error = await Effect.runPromise(
+      Effect.flip(readMessage(client, inboxMessage)),
+    );
+    expect(error._tag).toBe('StaleUidError');
+    expect(fetched).toBe(false);
+  });
 });

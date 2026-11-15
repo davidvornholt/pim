@@ -26,10 +26,13 @@ import { requireCurrentUidValidity } from './uid-validity';
 const readReplySource = (
   client: ImapFlow,
   input: DraftInput,
-): Effect.Effect<FullMessage | undefined, ImapError | MessageNotFoundError> =>
+): Effect.Effect<
+  FullMessage | undefined,
+  ImapError | MessageNotFoundError | StaleUidError
+> =>
   input.replySource === undefined
     ? Effect.succeed(undefined)
-    : readMessage(client, input.replySource.folder, input.replySource.uid);
+    : readMessage(client, input.replySource);
 
 const appendDraft = (
   client: ImapFlow,
@@ -150,7 +153,7 @@ export const writeDraft = (
   input: DraftInput,
 ): Effect.Effect<
   DraftLocation,
-  ImapError | DraftError | MessageNotFoundError
+  ImapError | DraftError | MessageNotFoundError | StaleUidError
 > =>
   Effect.gen(function* () {
     const folders = yield* listFolders(client);

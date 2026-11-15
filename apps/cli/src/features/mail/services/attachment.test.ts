@@ -4,6 +4,7 @@ import type { ImapFlow, MessageStructureObject } from 'imapflow';
 import { readAttachment } from './attachment';
 
 const messageUid = 42;
+const inboxMessage = { folder: 'INBOX', uid: messageUid, uidValidity: '111' };
 const attachmentPart = '2';
 const pdfContent = 'pdf bytes';
 const largeSize = 50_000_000;
@@ -33,6 +34,7 @@ describe('readAttachment', () => {
     const released = { value: false };
     const calls: Array<ReadonlyArray<unknown>> = [];
     const client = {
+      mailbox: { uidValidity: 111n },
       getMailboxLock: mailboxLock(released),
       fetchOne: () =>
         Promise.resolve({
@@ -53,7 +55,7 @@ describe('readAttachment', () => {
     } as unknown as ImapFlow;
 
     const result = await Effect.runPromise(
-      readAttachment(client, 'INBOX', messageUid, attachmentPart),
+      readAttachment(client, inboxMessage, attachmentPart),
     );
 
     expect(calls).toEqual([
@@ -67,6 +69,7 @@ describe('readAttachment', () => {
   it('rejects an unknown part before downloading', async () => {
     let downloads = 0;
     const client = {
+      mailbox: { uidValidity: 111n },
       getMailboxLock: mailboxLock({ value: false }),
       fetchOne: () =>
         Promise.resolve({
@@ -80,7 +83,7 @@ describe('readAttachment', () => {
     } as unknown as ImapFlow;
 
     const missing = await Effect.runPromise(
-      Effect.flip(readAttachment(client, 'INBOX', messageUid, '9')),
+      Effect.flip(readAttachment(client, inboxMessage, '9')),
     );
 
     expect(missing._tag).toBe('AttachmentNotFoundError');
@@ -91,6 +94,7 @@ describe('readAttachment', () => {
 describe('readAttachment download results', () => {
   it('reports a missing attachment when ImapFlow returns no download', async () => {
     const client = {
+      mailbox: { uidValidity: 111n },
       getMailboxLock: mailboxLock({ value: false }),
       fetchOne: () =>
         Promise.resolve({
@@ -101,7 +105,7 @@ describe('readAttachment download results', () => {
     } as unknown as ImapFlow;
 
     const error = await Effect.runPromise(
-      Effect.flip(readAttachment(client, 'INBOX', messageUid, attachmentPart)),
+      Effect.flip(readAttachment(client, inboxMessage, attachmentPart)),
     );
 
     expect(error._tag).toBe('AttachmentNotFoundError');
@@ -109,6 +113,7 @@ describe('readAttachment download results', () => {
 
   it('keeps the BODYSTRUCTURE type when downloaded MIME headers omit it', async () => {
     const client = {
+      mailbox: { uidValidity: 111n },
       getMailboxLock: mailboxLock({ value: false }),
       fetchOne: () =>
         Promise.resolve({
@@ -123,7 +128,7 @@ describe('readAttachment download results', () => {
     } as unknown as ImapFlow;
 
     const result = await Effect.runPromise(
-      readAttachment(client, 'INBOX', messageUid, attachmentPart),
+      readAttachment(client, inboxMessage, attachmentPart),
     );
 
     expect(result.contentType).toBe('application/pdf');
@@ -135,6 +140,7 @@ it.each([false, undefined])(
   async (missing) => {
     const released = { value: false };
     const client = {
+      mailbox: { uidValidity: 111n },
       getMailboxLock: mailboxLock(released),
       fetchOne: () => Promise.resolve(missing),
       download: () => {
@@ -142,9 +148,7 @@ it.each([false, undefined])(
       },
     } as unknown as ImapFlow;
     const result = await Effect.runPromise(
-      Effect.result(
-        readAttachment(client, 'INBOX', messageUid, attachmentPart),
-      ),
+      Effect.result(readAttachment(client, inboxMessage, attachmentPart)),
     );
     expect(result).toMatchObject({
       _tag: 'Failure',
@@ -153,3 +157,24 @@ it.each([false, undefined])(
     expect(released.value).toBe(true);
   },
 );
+
+describe('readAttachment stale handles', () => {
+  it('refuses to download from a message after its folder was rebuilt', async () => {
+    const released = { value: false };
+    let fetched = false;
+    const client = {
+      mailbox: { uidValidity: 222n },
+      getMailboxLock: mailboxLock(released),
+      fetchOne: () => {
+        fetched = true;
+        return Promise.resolve(false);
+      },
+    } as unknown as ImapFlow;
+    const error = await Effect.runPromise(
+      Effect.flip(readAttachment(client, inboxMessage, attachmentPart)),
+    );
+    expect(error._tag).toBe('StaleUidError');
+    expect(fetched).toBe(false);
+    expect(released.value).toBe(true);
+  });
+});

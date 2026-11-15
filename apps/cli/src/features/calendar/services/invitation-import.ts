@@ -327,7 +327,7 @@ export const importInvitation = (
         message:
           account.graph === undefined
             ? `${account.email} has no calendar server (a dav table in the account config), so pim cannot add the meeting to a calendar`
-            : `Microsoft Graph cannot add an emailed invitation to the Outlook calendars of ${account.email}, and it has no calendar server (a dav table in the account config). "pim calendar respond" with --folder and --uid saves the answer as a reply draft`,
+            : `Microsoft Graph cannot add an emailed invitation to the Outlook calendars of ${account.email}, and it has no calendar server (a dav table in the account config). "pim calendar respond" with --folder, --uid, and --uid-validity saves the answer as a reply draft`,
       });
     }
     const dav = yield* Dav;

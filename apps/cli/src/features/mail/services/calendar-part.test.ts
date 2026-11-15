@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'bun:test';
+import { Effect } from 'effect';
+import type { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
 import MailComposer from 'nodemailer/lib/mail-composer/index.js';
 import type Mail from 'nodemailer/lib/mailer';
-import { calendarPart } from './calendar-part';
+import { calendarPart, readCalendarMessage } from './calendar-part';
 
 const ics = (method: string) =>
   `BEGIN:VCALENDAR\r\nMETHOD:${method}\r\nEND:VCALENDAR\r\n`;
@@ -53,5 +55,30 @@ describe('calendarPart', () => {
         attachments: [{ filename: 'notes.txt', content: 'notes' }],
       }),
     ).toBeUndefined();
+  });
+});
+
+describe('readCalendarMessage', () => {
+  it('refuses an invitation handle after its folder was rebuilt', async () => {
+    let fetched = false;
+    const client = {
+      mailbox: { uidValidity: 222n },
+      getMailboxLock: () => Promise.resolve({ release: () => undefined }),
+      fetchOne: () => {
+        fetched = true;
+        return Promise.resolve(false);
+      },
+    } as unknown as ImapFlow;
+    const error = await Effect.runPromise(
+      Effect.flip(
+        readCalendarMessage(client, 'me@example.com', {
+          folder: 'INBOX',
+          uid: 42,
+          uidValidity: '111',
+        }),
+      ),
+    );
+    expect(error._tag).toBe('StaleUidError');
+    expect(fetched).toBe(false);
   });
 });

@@ -68,6 +68,11 @@ export type FullMessage = {
   readonly attachments: ReadonlyArray<MessageAttachment>;
 };
 
+// A message as "pim mail read" prints it, with the handle that reads it again.
+export type ReadMessage = FullMessage & {
+  readonly uidValidity: string;
+};
+
 export type MessageThread = Pick<
   FullMessage,
   'messageId' | 'inReplyTo' | 'references'
@@ -98,9 +103,12 @@ export type AttachmentContent = MessageAttachment & {
   readonly content: Uint8Array;
 };
 
+// A message from a search hit. uidValidity guards against a mailbox rebuild
+// reassigning the uid to a different message.
 export type MessageHandle = {
   readonly folder: string;
   readonly uid: number;
+  readonly uidValidity: string;
 };
 
 export type DraftInput = {

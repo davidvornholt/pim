@@ -5,10 +5,11 @@ import {
   type ImapError,
   type MessageNotFoundError,
   NoCalendarDataError,
+  type StaleUidError,
 } from '../errors/errors';
-import type { CalendarMessage } from '../schemas/mail';
+import type { CalendarMessage, MessageHandle } from '../schemas/mail';
 import { fetchParsedMessage, toFullMessage } from './imap-ops';
-import { lockMailbox } from './mailbox-lock';
+import { lockMessageFolder } from './mailbox-lock';
 
 const calendarFile = /\.ics$/iu;
 
@@ -70,14 +71,14 @@ const decode = (attachment: Attachment): string => {
 export const readCalendarMessage = (
   client: ImapFlow,
   account: string,
-  folder: string,
-  uid: number,
+  handle: MessageHandle,
 ): Effect.Effect<
   CalendarMessage,
-  ImapError | MessageNotFoundError | NoCalendarDataError
+  ImapError | MessageNotFoundError | NoCalendarDataError | StaleUidError
 > =>
   Effect.gen(function* () {
-    yield* lockMailbox(client, folder);
+    const { folder, uid } = handle;
+    yield* lockMessageFolder(client, handle);
     const { parsed } = yield* fetchParsedMessage(client, folder, uid);
     const part = calendarPart(parsed.attachments);
     if (part === undefined) {

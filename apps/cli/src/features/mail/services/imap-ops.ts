@@ -2,11 +2,20 @@ import { Effect } from 'effect';
 import { convert } from 'html-to-text';
 import type { ImapFlow, ListResponse, MessageStructureObject } from 'imapflow';
 import { type AddressObject, type ParsedMail, simpleParser } from 'mailparser';
-import { ImapError, MessageNotFoundError } from '../errors/errors';
-import type { FolderInfo, FullMessage } from '../schemas/mail';
+import {
+  ImapError,
+  MessageNotFoundError,
+  type StaleUidError,
+} from '../errors/errors';
+import type {
+  FolderInfo,
+  FullMessage,
+  MessageHandle,
+  ReadMessage,
+} from '../schemas/mail';
 import { listAttachments } from './attachment-metadata';
 import { safeAttributionText } from './attribution-safety';
-import { lockMailbox } from './mailbox-lock';
+import { lockMessageFolder } from './mailbox-lock';
 
 export const imapError =
   (label: string) =>
@@ -162,10 +171,17 @@ export const readMessageContents = (
 
 export const readMessage = (
   client: ImapFlow,
-  folder: string,
-  uid: number,
-): Effect.Effect<FullMessage, ImapError | MessageNotFoundError> =>
+  handle: MessageHandle,
+): Effect.Effect<
+  ReadMessage,
+  ImapError | MessageNotFoundError | StaleUidError
+> =>
   Effect.gen(function* () {
-    yield* lockMailbox(client, folder);
-    return yield* readMessageContents(client, folder, uid);
+    yield* lockMessageFolder(client, handle);
+    const message = yield* readMessageContents(
+      client,
+      handle.folder,
+      handle.uid,
+    );
+    return { ...message, uidValidity: handle.uidValidity };
   }).pipe(Effect.scoped);
