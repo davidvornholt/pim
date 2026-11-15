@@ -28,8 +28,7 @@ const handleFlags = {
   uid: flag.integer('n', 'Draft uid from the draft handle'),
   uidValidity: flag.text('id', 'uidValidity from the draft handle'),
 } as const;
-// --reply-folder, --reply-uid, and --reply-uid-validity go together;
-// replyHandle checks them.
+// --reply-folder, --reply-uid, and --reply-uid-validity go together.
 const composeFlags = {
   to: flag.text('addresses', 'Recipients, comma-separated'),
   cc: flag.optionalText('addresses', 'Cc recipients, comma-separated'),
