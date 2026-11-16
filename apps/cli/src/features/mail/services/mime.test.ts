@@ -97,6 +97,7 @@ describe('buildMime', () => {
         uid: 42,
         folder: 'INBOX',
         from: 'Original Sender <original@example.com>',
+        replyTo: '',
         to: account.email,
         cc: '',
         bcc: '',
