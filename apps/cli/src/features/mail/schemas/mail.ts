@@ -54,6 +54,8 @@ export type FullMessage = {
   readonly uid: number;
   readonly folder: string;
   readonly from: string;
+  // Where a reply goes instead of from; empty when the message names none.
+  readonly replyTo: string;
   readonly to: string;
   readonly cc: string;
   readonly bcc: string;

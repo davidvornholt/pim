@@ -83,6 +83,7 @@ export const toFullMessage = (
   uid,
   folder,
   from: addressText(parsed.from),
+  replyTo: addressText(parsed.replyTo),
   to: addressText(parsed.to),
   cc: addressText(parsed.cc),
   bcc: addressText(parsed.bcc),

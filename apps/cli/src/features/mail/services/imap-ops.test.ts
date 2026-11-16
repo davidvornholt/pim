@@ -249,6 +249,33 @@ describe('readMessage plain text', () => {
   });
 });
 
+describe('readMessage reply address', () => {
+  const sourceWith = (headers: ReadonlyArray<string>): Buffer =>
+    Buffer.from(
+      [
+        'From: Notifications <no-reply@example.com>',
+        ...headers,
+        'To: reader@example.com',
+        'Subject: Your support request',
+        '',
+        'Please reply to this message.',
+      ].join('\r\n'),
+    );
+
+  it('prints the Reply-To address a reply goes to', async () => {
+    const message = await readSource(
+      sourceWith(['Reply-To: Support <support@example.com>']),
+    );
+    expect(message.replyTo).toBe('"Support" <support@example.com>');
+    expect(message.from).toBe('"Notifications" <no-reply@example.com>');
+  });
+
+  it('prints an empty Reply-To when the message has none', async () => {
+    const message = await readSource(sourceWith([]));
+    expect(message.replyTo).toBe('');
+  });
+});
+
 describe('missing IMAP messages', () => {
   it.each([false, undefined])(
     'returns a typed missing-message error for %s',

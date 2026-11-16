@@ -26,6 +26,7 @@ const message: FullMessage = {
   uid: 42,
   folder: 'INBOX',
   from: 'Sender & Co <sender@example.com>',
+  replyTo: '',
   to: 'recipient@example.com',
   cc: '',
   bcc: '',
