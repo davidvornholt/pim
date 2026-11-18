@@ -13,6 +13,7 @@ Run `pim calendar --help` for the calendar commands and `pim <command> --help` f
 - Read `failures` before saying a day is free: a calendar that failed may hold events.
 - Outlook calendars and events have ids without slashes as `href`. An Outlook `href` from `pim calendar events` names one occurrence of a recurring event, and `pim calendar get` shows the series as `seriesHref`.
 - A Teams meeting is an Outlook event with a join link. Pass `--teams` only when the user asked for a Teams meeting: only calendars of Microsoft 365 work or school accounts offer one, and pim cannot remove it again.
+- Before you suggest a time for a meeting or call, or create an event with attendees, run `pim guide` and follow the user's guide it prints, such as when they are free for calls. What the user asks for in the current request takes precedence.
 - Create, change, or delete an event only when the user asked for it. Others may see a shared calendar, so before creating an event, ask which calendar from `pim calendar list` to use if the user did not name one.
 - Before `pim calendar update` or `pim calendar delete`, run `pim calendar get` and pass its `etag` exactly, quotes included. If the command reports a conflict, the event changed: get it again and check the change still makes sense.
 - Pass `--series` only when the user wants every occurrence of a recurring event renamed, edited, deleted, or answered.

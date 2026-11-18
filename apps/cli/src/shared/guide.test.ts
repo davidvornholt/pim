@@ -3,12 +3,9 @@ import { mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Effect } from 'effect';
-import { readDraftingGuide } from './drafting-guide';
+import { readGuide } from './guide';
 
-const tempDir = join(
-  tmpdir(),
-  `pim-drafting-guide-test-${crypto.randomUUID()}`,
-);
+const tempDir = join(tmpdir(), `pim-guide-test-${crypto.randomUUID()}`);
 const environmentKeys = ['PIM_CONFIG', 'XDG_CONFIG_HOME'] as const;
 const savedEnvironment = environmentKeys.map(
   (key) => [key, Bun.env[key]] as const,
@@ -28,17 +25,17 @@ afterAll(async () => {
   await rm(tempDir, { recursive: true, force: true });
 });
 
-const read = () => Effect.runPromise(Effect.result(readDraftingGuide));
+const read = () => Effect.runPromise(Effect.result(readGuide));
 
-describe('readDraftingGuide', () => {
-  it('reads drafting.md from the folder that PIM_CONFIG points into', async () => {
+describe('readGuide', () => {
+  it('reads guide.md from the folder that PIM_CONFIG points into', async () => {
     const folder = join(tempDir, 'override');
-    await Bun.write(join(folder, 'drafting.md'), 'Sign off with "Best".\n');
+    await Bun.write(join(folder, 'guide.md'), 'Sign off with "Best".\n');
     Bun.env.PIM_CONFIG = join(folder, 'accounts.toml');
     expect(await read()).toMatchObject({
       _tag: 'Success',
       success: {
-        path: join(folder, 'drafting.md'),
+        path: join(folder, 'guide.md'),
         guide: 'Sign off with "Best".\n',
       },
     });
@@ -49,13 +46,13 @@ describe('readDraftingGuide', () => {
     Bun.env.XDG_CONFIG_HOME = tempDir;
     expect(await read()).toMatchObject({
       _tag: 'Success',
-      success: { path: join(tempDir, 'pim', 'drafting.md'), guide: null },
+      success: { path: join(tempDir, 'pim', 'guide.md'), guide: null },
     });
   });
 
   it('fails with the path when the guide cannot be read', async () => {
     const folder = join(tempDir, 'unreadable');
-    await mkdir(join(folder, 'drafting.md'), { recursive: true });
+    await mkdir(join(folder, 'guide.md'), { recursive: true });
     Bun.env.PIM_CONFIG = join(folder, 'accounts.toml');
     const result = await read();
     expect(result).toMatchObject({
@@ -63,7 +60,7 @@ describe('readDraftingGuide', () => {
       failure: {
         _tag: 'ConfigError',
         message: expect.stringContaining(
-          `Could not read the drafting guide at ${join(folder, 'drafting.md')}`,
+          `Could not read the guide at ${join(folder, 'guide.md')}`,
         ),
       },
     });
