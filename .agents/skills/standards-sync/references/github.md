@@ -17,6 +17,8 @@ CI checks with its restricted workflow token, which can't see who may bypass a r
 
 Unless `sync-standards.local.json` sets `"autoSync": false`, a weekly run keeps one sync pull request open from the branch `standards-sync/update` while canonical content differs. Each run rebases that branch and updates it, so commits you add to adapt the consumer survive. The pull request description doesn't: every run that changes the branch rewrites it.
 
+In a Bun consumer, each run also raises the exact `@davidvornholt/standards` version in `package.json` to the newest npm release and updates `bun.lock`, unless the policy sets `ref`. The run itself still uses the CLI on the base branch, so the new release first runs in the sync pull request's required checks. When the release breaks the consumer, `check` fails, the pull request stays open without merging, and its description names both versions.
+
 When no open pull request uses the branch, the run rebuilds the branch from the base branch instead of rebasing the old one. The workflow owns the `standards-sync/` branch namespace. It closes every other open same-repository pull request there, and closes all of them once the base branch already matches upstream.
 
 Sync branches contain trusted upstream code, so consumer CI may run on them before anyone reviews the generated pull request.
@@ -27,7 +29,7 @@ The workflow pushes the branch, manages the sync pull request, and turns on its 
 bun standards creds add github --dest ci:ci.broker_app
 ```
 
-Standards auto-merge uses the same App, so a repository with `"autoSync": false` still needs it.
+Standards auto-merge uses the same App. A repository with `"autoSync": false` may go without the App by having no `secrets/ci.yaml`: `check` then requires neither, and Standards auto-merge leaves Dependabot pull requests manual. Once `secrets/ci.yaml` exists, it must hold the App.
 
 ## Auto-merge
 
@@ -38,7 +40,7 @@ The `Standards auto-merge` workflow lets bot pull requests merge themselves once
 
 Auto-merge starts only where the repository allows auto-merge and an active rule on the base branch requires `check`. Without such a rule, gh would merge the pull request at once instead of waiting for `check`. So in a repository that declares `"rulesetEnforcement": "unavailable-on-plan"`, bot pull requests stay manual.
 
-Auto-merge waits only for required checks. So declare any other check that a dependency update can break as required in `.github/settings.local.json`, such as a Nix build with a fixed dependency hash.
+Auto-merge waits only for required checks. So declare any other check that a dependency update can break as required in `.github/settings.local.json`.
 
 Both turn auto-merge on with a merge token from the broker App with Contents write, Pull requests write, and Workflows write. A merge the App enables starts the push workflows on main; one enabled with the workflow token would not. Workflows write lets it merge pull requests that change workflows.
 
