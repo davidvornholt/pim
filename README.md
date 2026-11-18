@@ -26,9 +26,9 @@ pim status
 
 `pim login` checks each login against the server before storing it in the keyring service `pim` under `mail:<email>`, the calendar and contacts login under `dav:<email>`, and the Microsoft sign-in for Outlook calendars under `graph:<email>`. On Linux this needs a running Secret Service provider such as gnome-keyring.
 
-### Drafting guide
+### Guide for agents
 
-Notes on how agents should write your drafts, such as your sign-off or when to address someone formally, go in `drafting.md` in the same folder as `accounts.toml`. The file is optional and free text. `pim mail draft guide` prints it, and the pim-mail skill has agents read it before they write a draft.
+Notes on how agents should act for you, such as your sign-off, when to address someone formally, or when you are free for calls, go in `guide.md` in the same folder as `accounts.toml`. The file is optional and free text. `pim guide` prints it. The pim-mail skill has agents read it before they write a draft, and the pim-calendar skill before they suggest a meeting time or invite people.
 
 ### Calendars and contacts
 

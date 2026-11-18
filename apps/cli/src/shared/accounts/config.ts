@@ -15,7 +15,7 @@ const configPath = (): string =>
     'accounts.toml',
   );
 
-// pim's other config files, such as the drafting guide, live in the folder of
+// pim's other config files, such as the guide, live in the folder of
 // the account config, so PIM_CONFIG moves them too.
 export const besideAccountConfig = (fileName: string): string =>
   join(dirname(configPath()), fileName);

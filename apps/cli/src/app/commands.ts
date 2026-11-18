@@ -9,6 +9,7 @@ import { defineCommand, flag, UsageError } from '../shared/command-line';
 import type { Program } from '../shared/command-program';
 import { checkDavAccounts } from '../shared/dav/status';
 import { checkGraphAccounts } from '../shared/graph/status';
+import { guideFile, readGuide } from '../shared/guide';
 import { stdinIsTerminal } from '../shared/terminal';
 import { checkOut, writeAttachment } from './attachment-file';
 import { calendarCommands } from './calendar-commands';
@@ -56,6 +57,16 @@ const accounts = defineCommand(
   },
   (): CommandEffect =>
     AccountConfig.pipe(Effect.map((config) => json(config.accounts))),
+);
+
+const guide = defineCommand(
+  {
+    name: 'guide',
+    summary: "Print the user's guide for agents",
+    description: `Print the user's notes on how agents should act for them, such as their sign-off or when they are free for calls, from ${guideFile} in the folder of the account config. "guide" is null when the user has not written one.`,
+    flags: {},
+  },
+  (): CommandEffect => readGuide.pipe(Effect.map((found) => json(found))),
 );
 
 const status = defineCommand(
@@ -267,6 +278,7 @@ export const program: Program<CommandEffect> = {
   ].join('\n'),
   commands: [
     accounts,
+    guide,
     status,
     login,
     folders,

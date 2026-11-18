@@ -59,9 +59,9 @@
         "apps/cli/src/app/attachment-file.ts",
         "apps/cli/src/app/attachment-file.test.ts",
         "apps/cli/src/app/cli.test.ts",
-        "apps/cli/src/features/mail/services/drafting-guide.test.ts",
         "apps/cli/src/shared/accounts/config.ts",
-        "apps/cli/src/shared/accounts/config.test.ts"
+        "apps/cli/src/shared/accounts/config.test.ts",
+        "apps/cli/src/shared/guide.test.ts"
       ],
       "linter": {
         "rules": {
