@@ -73,6 +73,17 @@ stdenvNoCC.mkDerivation {
   # Bun appends the bundled program to its own executable; leave it intact.
   dontStrip = true;
   dontPatchELF = true;
+  # The Standards workflow builds this package, so a binary that can't start,
+  # or skills installed differently from apps/cli/skills, fail `check`. The
+  # comparison reads the skills unfiltered, so it also catches a tracked skill
+  # file that a .gitignore line keeps out of src.
+  doInstallCheck = true;
+  installCheckPhase = ''
+    runHook preInstallCheck
+    HOME=$TMPDIR $out/bin/pim --help >/dev/null
+    diff -r ${../apps/cli/skills} "$out/share/${pname}/skills"
+    runHook postInstallCheck
+  '';
 
   passthru = { inherit nodeModules skills; };
   meta = {
