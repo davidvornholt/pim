@@ -16,8 +16,8 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
-    "@davidvornholt/standards": "0.37.0",
-    "turbo": "^2.11.11",
+    "@davidvornholt/standards": "0.41.1",
+    "turbo": "^2.11.12",
     "typescript": "7.0.2"
   },
   "engines": {

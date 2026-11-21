@@ -15,8 +15,8 @@
     "effect": "^4.1.4",
     "html-to-text": "^10.0.1",
     "ical.js": "^2.2.1",
-    "imapflow": "^2.11.0",
-    "mailparser": "^3.14.3",
+    "imapflow": "^2.12.1",
+    "mailparser": "^3.14.5",
     "nodemailer": "^10.3.1"
   },
   "devDependencies": {
