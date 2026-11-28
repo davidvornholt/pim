@@ -15,8 +15,8 @@
     "effect": "^4.1.4",
     "html-to-text": "^10.0.1",
     "ical.js": "^2.2.1",
-    "imapflow": "^2.12.1",
-    "mailparser": "^3.14.5",
+    "imapflow": "^2.12.2",
+    "mailparser": "^3.15.0",
     "nodemailer": "^10.3.1"
   },
   "devDependencies": {
@@ -24,7 +24,7 @@
     "@types/bun": "^1.4.3",
     "@types/html-to-text": "^9.0.4",
     "@types/mailparser": "^3.9.0",
-    "@types/node": "^26.6.6",
+    "@types/node": "^26.6.10",
     "@types/nodemailer": "^8.0.2",
     "typescript": "7.0.2"
   }
